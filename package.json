@@ -1,7 +1,7 @@
 {
-  "name": "snake-clash-io",
+  "name": "mich-snake",
   "version": "2.0.0",
-  "description": "Jeu multijoueur temps réel Snake Clash .io — by michben",
+  "description": "Mich Snake — jeu de serpent multijoueur temps réel",
   "author": "michben",
   "main": "server.js",
   "scripts": {

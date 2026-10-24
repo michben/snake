@@ -1,5 +1,5 @@
-/* Service Worker — Snake Clash .io (by michben) : jeu jouable 100% hors-ligne */
-const CACHE = 'snake-clash-v2';
+/* Service Worker — Mich Snake : jeu jouable 100% hors-ligne */
+const CACHE = 'mich-snake-v2';
 const ASSETS = ['./', 'index.html', 'css/style.css', 'js/core.js', 'js/tower.js', 'js/client.js', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', (e) => {

@@ -1,5 +1,5 @@
 /*
- * Tour des Défis — missions variées par étage + skins à débloquer (by michben)
+ * Tour des Défis — missions variées par étage + skins à débloquer
  * Progression sauvegardée dans localStorage.
  */
 (function (root) {

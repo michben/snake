@@ -1,5 +1,5 @@
 /*
- * Snake Clash .io — client (by michben)
+ * Mich Snake — client
  * Rendu Canvas interpolé, minimap radar, contrôles souris / tactiles,
  * Tour des Défis et bascule automatique en mode hors-ligne.
  */
@@ -743,5 +743,5 @@
     if ('serviceWorker' in navigator && location.protocol !== 'file:') {
         navigator.serviceWorker.register('sw.js').catch(() => { /* PWA optionnelle */ });
     }
-    console.log('%c🐍 Snake Clash .io — by michben', 'color:#ffd700;font-weight:bold;font-size:14px');
+    console.log('%c🐍 Mich Snake — by michben', 'color:#ffd700;font-weight:bold;font-size:14px');
 })();

@@ -1,5 +1,5 @@
 /*
- * Snake Clash .io — moteur de jeu partagé (by michben)
+ * Mich Snake — moteur de jeu partagé
  *
  * Ce fichier tourne à la fois côté serveur (Node, via require) et dans le
  * navigateur (window.SnakeCore) pour le mode hors-ligne. Toute la physique,

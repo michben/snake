@@ -1,4 +1,4 @@
-# 🐍 Snake Clash .io — by michben
+# 🐍 Mich Snake
 
 Jeu `.io` multijoueur temps réel : mangez, grandissez et dominez l'arène. Jouable **en ligne** (Node.js + Socket.io) ou **100 % hors-ligne** contre des bots, sur PC comme sur mobile.
 
@@ -49,4 +49,4 @@ Le dossier `public/` peut aussi être servi par n'importe quel hébergeur statiq
 ```
 
 ---
-Conçu **by michben**.
+by michben

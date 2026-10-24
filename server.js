@@ -1,5 +1,5 @@
 /*
- * Snake Clash .io — serveur multijoueur (by michben)
+ * Mich Snake — serveur multijoueur
  * Express + Socket.io, boucle physique à 30 ticks/s partagée avec le mode hors-ligne.
  */
 const express = require('express');
@@ -87,5 +87,5 @@ setInterval(() => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`🐍 Snake Clash .io (by michben) lancé sur http://localhost:${PORT}`);
+    console.log(`🐍 Mich Snake lancé sur http://localhost:${PORT}`);
 });

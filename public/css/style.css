@@ -32,13 +32,6 @@ h1 {
     -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
     text-transform: uppercase; letter-spacing: 2px; font-weight: 900;
 }
-h1 small { font-size: 1.1rem; letter-spacing: 1px; }
-.byline {
-    display: inline-block; margin: 8px 0 4px; padding: 3px 12px; border-radius: 999px;
-    font-size: 0.8rem; font-weight: 700; letter-spacing: 1px;
-    color: #ffd700; background: linear-gradient(90deg, rgba(255,215,0,0.12), rgba(138,43,226,0.18));
-    border: 1px solid rgba(255,215,0,0.35);
-}
 .subtitle { color: var(--muted); font-size: 0.9rem; margin: 6px 0 16px; }
 
 input[type=text] {
@@ -98,8 +91,7 @@ input[type=text]:focus { border-color: var(--accent); }
 .records { display: flex; justify-content: space-around; margin-top: 12px; font-size: 0.75rem; color: var(--muted); }
 .records b { display: block; color: #fff; font-size: 1rem; }
 
-.footer { margin-top: 16px; font-size: 0.72rem; color: #5d6b80; }
-.footer b { color: #ffd700; }
+.footer { margin-top: 16px; font-size: 0.68rem; color: #4a5568; letter-spacing: 0.3px; }
 .help { font-size: 0.72rem; color: #6b7a90; margin-top: 10px; line-height: 1.4; }
 
 /* Écran de mort */
