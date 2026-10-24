@@ -73,7 +73,8 @@
         level: store.get('snake_level', 'neon'),
         photo: store.get('snake_photo', '0') === '1'     // photo de profil à la place de l'emoji
     };
-    if (!LEVELS[prefs.level]) prefs.level = 'neon';
+    const levelUnlocked = (key) => !LEVELS[key].unlock || Tower.floor >= LEVELS[key].unlock;
+    if (!LEVELS[prefs.level] || !levelUnlocked(prefs.level)) prefs.level = 'neon';
     const records = {
         best: parseInt(store.get('snake_best_score', '0'), 10) || 0,
         kills: parseInt(store.get('snake_total_kills', '0'), 10) || 0,
@@ -346,6 +347,9 @@
         Sound.play('levelup');
         toast(`🗼 Étage ${floor} réussi !`, 'gold');
         if (reward) setTimeout(() => toast(`✨ Skin débloqué : ${SKINS[reward].emoji} ${SKINS[reward].name}`, 'gold'), 700);
+        for (const key in LEVELS) {
+            if (LEVELS[key].unlock === Tower.floor) setTimeout(() => toast(`${LEVELS[key].icon} Niveau débloqué : ${LEVELS[key].name} !`, 'gold'), 1400);
+        }
         buildSkinSelector();
         updateTowerUI();
     };
@@ -405,15 +409,21 @@
         $('currentRank').textContent = '#' + me.rank;
         updateMissionHud(p);
         updateLeaderboard();
-        updatePowerHud(me.pw);
+        updatePowerHud(me.pw, me.fz);
         updateEventBanner();
+        // Gelé par le Blizzard d'un autre serpent : on le dit, sinon ça ressemble à un ralentissement du jeu
+        if (me.fz && !state.frozen) {
+            Sound.play('power', 'freeze');
+            toast('❄️ Gelé par un Blizzard ! Vous êtes ralenti quelques secondes', 'info');
+        }
+        state.frozen = !!me.fz;
         Quests.track('score', me.score);
         Quests.track('survive', me.alive);
     }
 
     let lastPowerHtml = '';
-    function updatePowerHud(pw) {
-        let html = '';
+    function updatePowerHud(pw, frozen) {
+        let html = frozen ? `<div class="power-chip ending" style="--c:#9be7ff" title="Gelé">❄️ Gelé ${frozen}s</div>` : '';
         for (const k in (pw || {})) {
             const p = POWERUPS[k];
             if (!p) continue;
@@ -549,7 +559,8 @@
             const k = d > JOY_R ? JOY_R / d : 1;
             joyKnob.style.transform = `translate(${dx * k}px, ${dy * k}px)`;
         }
-        e.preventDefault();
+        // Seulement en partie : dans les menus, le doigt doit pouvoir faire défiler la page
+        if (state.playing) e.preventDefault();
     }
     function onTouchEnd(e) {
         for (const t of e.changedTouches) {
@@ -589,10 +600,13 @@
         el.innerHTML = '';
         for (const key in LEVELS) {
             const L = LEVELS[key];
+            const open = levelUnlocked(key);
             const b = document.createElement('button');
-            b.className = 'level-card level-' + key + (key === prefs.level ? ' active' : '');
-            b.innerHTML = `<span class="lv-icon">${L.icon}</span><span class="lv-text"><b>${L.name}</b><small>${L.desc}</small></span>`;
+            b.className = 'level-card level-' + key + (key === prefs.level ? ' active' : '') + (open ? '' : ' locked');
+            b.innerHTML = `<span class="lv-icon">${open ? L.icon : '🔒'}</span><span class="lv-text"><b>${L.name}</b><small>${open ? L.desc
+                : `Atteignez l'étage ${L.unlock} de la Tour des Défis pour débloquer ce niveau (vous êtes à l'étage ${Tower.floor}).`}</small></span>`;
             b.addEventListener('click', () => {
+                if (!open) { Sound.play('warning'); toast(`🔒 ${L.name} : atteignez l'étage ${L.unlock} de la Tour des Défis`, 'info'); return; }
                 prefs.level = key;
                 store.set('snake_level', key);
                 Sound.play('click');
@@ -786,8 +800,25 @@
     $('menuBtn').addEventListener('click', () => { stopOfflineWorld(); state.mode = null; showScreen('menu'); });
 
     // ---------- Rendu ----------
+    // Qualité adaptative : si les images ralentissent, on baisse la résolution du canvas
+    // (le coût de dessin est proportionnel au nombre de pixels), puis on la remonte quand ça va mieux
+    // (on regarde aussi le temps de dessin, pour ne pas punir un écran simplement bridé à 30 Hz)
+    const quality = { scale: 1, acc: 0, work: 0, frames: 0, good: 0 };
+    function adaptQuality(dt, work) {
+        if (!state.playing || document.hidden || dt > 250) { quality.acc = quality.work = quality.frames = 0; return; }
+        quality.acc += dt; quality.work += work; quality.frames++;
+        if (quality.acc < 1500) return;
+        const avg = quality.acc / quality.frames, avgWork = quality.work / quality.frames;
+        quality.acc = quality.work = quality.frames = 0;
+        if (avg > 21 && avgWork > 7 && quality.scale > 0.5) {
+            quality.scale = Math.max(0.5, quality.scale - 0.15); quality.good = 0; resize();
+        } else if (avg < 15 && quality.scale < 1 && ++quality.good >= 3) {
+            quality.scale = Math.min(1, quality.scale + 0.15); quality.good = 0; resize();
+        }
+    }
+
     function resize() {
-        state.dpr = Math.min(window.devicePixelRatio || 1, 2);
+        state.dpr = Math.max(0.6, Math.min(window.devicePixelRatio || 1, 2) * quality.scale);
         canvas.width = Math.floor(window.innerWidth * state.dpr);
         canvas.height = Math.floor(window.innerHeight * state.dpr);
         canvas.style.width = window.innerWidth + 'px';
@@ -837,13 +868,21 @@
         return `rgb(${Math.round(lerp(a[0], b[0], t))},${Math.round(lerp(a[1], b[1], t))},${Math.round(lerp(a[2], b[2], t))})`;
     }
 
+    // Tailles de sprites arrondies par paliers (~10 %) : le zoom qui varie en continu ne doit pas
+    // recréer des sprites (fillText d'emoji = coûteux) à chaque image
+    function spriteSize(px) {
+        if (px <= 32) return Math.max(8, Math.ceil(px / 4) * 4);
+        return Math.ceil(Math.pow(1.1, Math.ceil(Math.log(px) / Math.log(1.1))));
+    }
+
     // Sprites emoji pré-rendus : fillText d'un emoji à chaque segment serait bien trop lent
     const emojiCache = new Map();
     function emojiSprite(emoji, px) {
-        px = Math.max(8, Math.ceil(px / 4) * 4);
+        px = spriteSize(px);
         const key = emoji + '|' + px;
         let c = emojiCache.get(key);
         if (c) return c;
+        if (emojiCache.size > 400) emojiCache.clear();
         c = document.createElement('canvas');
         c.width = c.height = Math.ceil(px * 1.25);
         const g = c.getContext('2d');
@@ -871,7 +910,7 @@
     function avatarSprite(v, px, color) {
         const img = avatarImage(v);
         if (!img) return null;
-        px = Math.max(8, Math.ceil(px / 4) * 4);
+        px = spriteSize(px);
         const key = v + '|' + px + '|' + color;
         let c = avatarCache.get(key);
         if (c) return c;
@@ -935,13 +974,15 @@
         ctx.stroke();
         ctx.restore();
 
-        // Emojis le long du corps (un segment sur deux), de la queue vers la tête
+        // Emojis le long du corps, de la queue vers la tête : espacés selon l'épaisseur
+        // (un gros serpent n'a pas besoin d'un sprite tous les 18 px, ça coûtait des centaines de dessins)
         const scale = state.camera.zoom * state.dpr;
         const bodySize = r * 1.9;
         const bodySpr = snakeSprite(p, skin, bodySize * scale);
         const bs = bodySize * 1.25;
+        const step = Math.max(2, Math.round(r * 0.8 / Core.CONFIG.SEGMENT_DISTANCE));
         for (let i = n - 1; i >= 2; i--) {
-            if (i % 2) continue;
+            if (i % step) continue;
             const x = g[i * 2], y = g[i * 2 + 1];
             if (x + r < x0 || x - r > x1 || y + r < y0 || y - r > y1) continue;
             ctx.drawImage(bodySpr, x - bs / 2, y - bs / 2, bs, bs);
@@ -1219,12 +1260,15 @@
         }
     }
 
-    let fpsFrames = 0, fpsLast = performance.now(), miniFrame = 0, lastFrame = performance.now();
+    let fpsFrames = 0, fpsLast = performance.now(), miniFrame = 0, lastFrame = performance.now(), lastFrameRaw = performance.now(), lastWork = 0;
     function render(now) {
         requestAnimationFrame(render);
         const dt = Math.min(50, now - lastFrame);
         lastFrame = now;
         fpsFrames++;
+        adaptQuality(now - lastFrameRaw, lastWork);
+        lastFrameRaw = now;
+        const workStart = performance.now();
         if (now - fpsLast > 1000) {
             state.fps = fpsFrames; fpsFrames = 0; fpsLast = now;
             const L = LEVELS[state.level];
@@ -1320,6 +1364,7 @@
         if (state.playing) drawChestArrows(me, W, H, z);
 
         if (state.mode && ++miniFrame % 4 === 0 && !$('minimapWrap').classList.contains('collapsed')) drawMinimap(frame, we === 'eclipse');
+        lastWork = performance.now() - workStart;
     }
 
     // ---------- Démarrage ----------

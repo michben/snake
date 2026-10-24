@@ -345,3 +345,5 @@ body.touch #eventBanner { top: 48px; font-size: 0.8rem; padding: 6px 12px; }
 .toast.quest { color: #7dffcb; border-color: rgba(0,255,204,0.6); }
 #deathHallBtn { flex: 0 0 58px; }
 @media (max-width: 480px) { #menu .card { padding-top: 56px; } }
+.screen { touch-action: pan-y; }
+.level-card.locked { filter: grayscale(0.85) brightness(0.7); cursor: not-allowed; }

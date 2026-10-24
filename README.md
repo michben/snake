@@ -34,7 +34,7 @@ Le dossier `public/` peut aussi être servi par n'importe quel hébergeur statiq
 | Niveau | Ambiance |
 | --- | --- |
 | 🌌 Arène Néon | Grande arène sous les étoiles (4000 px, 10 bots). |
-| 🌋 Cratère Volcan | Arène plus serrée, bots agressifs, éruptions annoncées qui crachent orbes et coffres. Musique dédiée. |
+| 🌋 Cratère Volcan | Débloqué à l'étage 3 de la Tour des Défis. Arène plus serrée, bots agressifs, éruptions annoncées qui crachent orbes et coffres. Musique dédiée. |
 
 ## Son, musiques et console admin
 

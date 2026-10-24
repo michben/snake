@@ -46,7 +46,8 @@
         },
         volcan: {
             name: 'Cratère Volcan', icon: '🌋', desc: 'Arène plus serrée, bots agressifs, éruptions pleines de trésors.',
-            size: 3200, bots: 12, maxFood: 520, chests: 12, legendary: 3, powerups: 14, eruptions: true, aggression: 0.35
+            size: 3200, bots: 12, maxFood: 520, chests: 12, legendary: 3, powerups: 14, eruptions: true, aggression: 0.35,
+            unlock: 3            // étage de la Tour des Défis à atteindre pour débloquer le niveau
         }
     };
 
@@ -791,7 +792,8 @@
                 me: me ? {
                     score: Math.floor(me.score), kills: me.kills, orbs: me.orbs, rank,
                     alive: Math.floor((this.tick - me.bornTick) / CONFIG.TICK_RATE), x: me.x, y: me.y, r: me.radius,
-                    pw: this.powersLeft(me)
+                    pw: this.powersLeft(me),
+                    fz: (me.frozenUntil || 0) > this.tick ? Math.ceil((me.frozenUntil - this.tick) / CONFIG.TICK_RATE) : 0
                 } : null
             };
             if (eruptions.length) snap.er = eruptions;

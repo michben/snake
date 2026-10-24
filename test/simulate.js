@@ -82,9 +82,9 @@ w4.grantPower(e, 'ghost');
 w4.removeSnake('f'); w4.moveSnake(e, 3 - e.x, 0); e.angle = e.targetAngle = Math.PI;
 for (let i = 0; i < 3; i++) w4.step();
 assert(w4.snakes.e && w4.snakes.e.x > w4.size / 2, 'le fantôme traverse le mur');
-const chest0 = w4.items.find(it => it.type === 'chest');
 w4.grantPower(w4.snakes.e, 'portal');
-assert(Math.hypot(w4.snakes.e.x - chest0.x, w4.snakes.e.y - chest0.y) < 2000, 'le portail mène près d\'un coffre');
+const nearest = Math.min(...w4.items.filter(it => it.type === 'chest').map(it => Math.hypot(w4.snakes.e.x - it.x, w4.snakes.e.y - it.y)));
+assert(nearest < 400, 'le portail mène près d\'un coffre');
 
 // Événements fous : chacun démarre, se termine, et l'Hydre lâche ses trésors
 const w5 = new World({ botCount: 2, eventEvery: [1, 2] });
