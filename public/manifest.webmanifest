@@ -1,0 +1,14 @@
+{
+  "name": "Snake Clash .io — by michben",
+  "short_name": "Snake Clash",
+  "description": "Mangez, grandissez et dominez l'arène — en ligne ou hors-ligne contre des bots.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#0b0e14",
+  "theme_color": "#0b0e14",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
