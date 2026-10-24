@@ -189,7 +189,7 @@
 
     Tower.onComplete = (floor, reward) => {
         toast(`🗼 Étage ${floor} réussi !`, 'gold');
-        if (reward) setTimeout(() => toast(`✨ Skin débloqué : ${SKINS[reward].name}`, 'gold'), 700);
+        if (reward) setTimeout(() => toast(`✨ Skin débloqué : ${SKINS[reward].emoji} ${SKINS[reward].name}`, 'gold'), 700);
         buildSkinSelector();
         updateTowerUI();
     };
@@ -375,14 +375,6 @@
         if (which === 'menu') { updateTowerUI(); updateRecords(); }
     }
 
-    function skinPreviewCss(key) {
-        const s = SKINS[key];
-        if (s.pattern === 'rainbow') return 'conic-gradient(red, orange, yellow, lime, cyan, blue, magenta, red)';
-        if (s.pattern === 'stars') return `radial-gradient(circle at 30% 30%, #fff 0 2px, transparent 3px), radial-gradient(circle at 70% 60%, #fff 0 1px, transparent 2px), linear-gradient(135deg, ${s.primary}, ${s.secondary})`;
-        if (s.pattern === 'signature') return `linear-gradient(135deg, ${s.primary} 0 45%, ${s.secondary} 55% 100%)`;
-        return `linear-gradient(135deg, ${s.primary}, ${s.secondary})`;
-    }
-
     function buildSkinSelector() {
         const el = $('skinSelector');
         el.innerHTML = '';
@@ -394,8 +386,8 @@
             if (ok) unlocked++;
             const b = document.createElement('div');
             b.className = 'skin-btn' + (ok ? '' : ' locked') + (key === prefs.skin ? ' active' : '');
-            b.style.background = skinPreviewCss(key);
-            b.style.setProperty('--glow', s.glow);
+            b.textContent = s.emoji;
+            b.style.setProperty('--glow', s.color);
             b.title = ok ? s.name : `${s.name} — débloqué à l'étage ${s.unlock}`;
             b.addEventListener('click', () => {
                 if (!ok) { $('skinName').textContent = `🔒 ${s.name} : atteignez l'étage ${s.unlock} de la Tour des Défis`; return; }
@@ -406,7 +398,7 @@
             el.appendChild(b);
         }
         $('skinCount').textContent = `${unlocked}/${keys.length} débloqués`;
-        $('skinName').textContent = SKINS[prefs.skin].name + (prefs.skin === 'michben' ? ' — skin signature ✦' : '');
+        $('skinName').textContent = `${SKINS[prefs.skin].emoji} ${SKINS[prefs.skin].name}`;
     }
 
     function updateTowerUI() {
@@ -519,15 +511,22 @@
         return `rgb(${Math.round(lerp(a[0], b[0], t))},${Math.round(lerp(a[1], b[1], t))},${Math.round(lerp(a[2], b[2], t))})`;
     }
 
-    function segmentColor(skin, i, len, time) {
-        switch (skin.pattern) {
-            case 'gradient': return mix(skin.primary, skin.secondary, i / Math.max(1, len - 1));
-            case 'pulse': return mix(skin.primary, skin.secondary, (Math.sin(i * 0.45 - time * 0.006) + 1) / 2);
-            case 'rainbow': return `hsl(${(i * 9 + time * 0.12) % 360}, 100%, 58%)`;
-            case 'stars': return i % 7 === 0 ? skin.primary : skin.secondary;
-            case 'signature': return (Math.floor(i / 4) % 2 === 0) ? skin.primary : skin.secondary;
-            default: return (Math.floor(i / 3) % 2 === 0) ? skin.primary : skin.secondary;
-        }
+    // Sprites emoji pré-rendus : fillText d'un emoji à chaque segment serait bien trop lent
+    const emojiCache = new Map();
+    function emojiSprite(emoji, px) {
+        px = Math.max(8, Math.ceil(px / 4) * 4);
+        const key = emoji + '|' + px;
+        let c = emojiCache.get(key);
+        if (c) return c;
+        c = document.createElement('canvas');
+        c.width = c.height = Math.ceil(px * 1.25);
+        const g = c.getContext('2d');
+        g.font = `${px}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        g.fillText(emoji, c.width / 2, c.height / 2 + px * 0.06);
+        emojiCache.set(key, c);
+        return c;
     }
 
     function drawGrid(x0, y0, x1, y1) {
@@ -560,54 +559,49 @@
         const skin = SKINS[p.k] || SKINS.neon;
         const g = p.g, n = g.length / 2, r = p.r;
 
-        // Halo néon : un seul trait épais (bien moins cher qu'un shadowBlur par segment)
-        if (p.b || skin.pattern === 'signature') {
-            ctx.save();
-            ctx.globalAlpha = p.b ? 0.35 : 0.14;
-            ctx.strokeStyle = skin.glow;
-            ctx.lineWidth = r * 2 + (p.b ? 16 : 10);
-            ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-            ctx.beginPath();
-            ctx.moveTo(g[0], g[1]);
-            for (let i = 1; i < n; i++) ctx.lineTo(g[i * 2], g[i * 2 + 1]);
+        // Corps coloré : un seul trait épais (bien moins cher qu'un shadowBlur par segment)
+        ctx.save();
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.moveTo(g[0], g[1]);
+        for (let i = 1; i < n; i++) ctx.lineTo(g[i * 2], g[i * 2 + 1]);
+        if (p.b) {
+            ctx.globalAlpha = 0.35;
+            ctx.strokeStyle = skin.color;
+            ctx.lineWidth = r * 2 + 16;
             ctx.stroke();
-            ctx.restore();
         }
+        ctx.globalAlpha = 0.28;
+        ctx.strokeStyle = skin.color;
+        ctx.lineWidth = r * 1.6;
+        ctx.stroke();
+        ctx.restore();
 
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-        for (let i = n - 1; i >= 0; i--) {
+        // Emojis le long du corps (un segment sur deux), de la queue vers la tête
+        const scale = state.camera.zoom * state.dpr;
+        const bodySize = r * 1.9;
+        const bodySpr = emojiSprite(skin.emoji, bodySize * scale);
+        const bs = bodySize * 1.25;
+        for (let i = n - 1; i >= 2; i--) {
+            if (i % 2) continue;
             const x = g[i * 2], y = g[i * 2 + 1];
             if (x + r < x0 || x - r > x1 || y + r < y0 || y - r > y1) continue;
-            ctx.beginPath();
-            ctx.fillStyle = segmentColor(skin, i, n, time);
-            ctx.arc(x, y, r, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-            if (skin.pattern === 'stars' && (i * 13 + Math.floor(time / 250)) % 9 === 0) {
-                ctx.fillStyle = '#fff';
-                ctx.fillRect(x - 1 + (i % 3) * 2 - 2, y - 1 + (i % 5) - 2, 2, 2);
-            }
+            ctx.drawImage(bodySpr, x - bs / 2, y - bs / 2, bs, bs);
         }
 
-        // Tête : yeux qui suivent la direction
+        // Tête : l'emoji en plus grand
         const hx = g[0], hy = g[1];
-        const eyeOffset = r * 0.55, eyeR = r * 0.3;
-        for (const side of [-1, 1]) {
-            const ex = hx + Math.cos(p.a + side * 0.6) * eyeOffset;
-            const ey = hy + Math.sin(p.a + side * 0.6) * eyeOffset;
-            ctx.beginPath(); ctx.fillStyle = '#fff'; ctx.arc(ex, ey, eyeR, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.fillStyle = '#000';
-            ctx.arc(ex + Math.cos(p.a) * eyeR * 0.4, ey + Math.sin(p.a) * eyeR * 0.4, eyeR * 0.55, 0, Math.PI * 2); ctx.fill();
-        }
+        const headSize = r * 2.7;
+        const hs = headSize * 1.25;
+        ctx.drawImage(emojiSprite(skin.emoji, headSize * scale), hx - hs / 2, hy - hs / 2, hs, hs);
 
         ctx.textAlign = 'center';
         ctx.font = `bold ${13 / Math.max(0.7, state.camera.zoom)}px sans-serif`;
         ctx.fillStyle = p.id === state.myId ? '#ffcc00' : 'rgba(255,255,255,0.9)';
-        ctx.fillText(p.n, hx, hy - r - 10);
+        ctx.fillText(p.n, hx, hy - r * 1.4 - 8);
         if (isLeader) {
             ctx.font = `${20 / Math.max(0.7, state.camera.zoom)}px sans-serif`;
-            ctx.fillText('👑', hx, hy - r - 28);
+            ctx.fillText('👑', hx, hy - r * 1.4 - 26);
         }
     }
 

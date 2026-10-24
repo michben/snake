@@ -34,20 +34,20 @@
     // Couleurs de nourriture "naturelle"
     const FOOD_COLORS = ['#ff0055', '#00ffcc', '#ffcc00', '#aa00ff', '#00ff44', '#00aaff', '#ff7a00'];
 
-    // Catalogue des skins. `unlock` = étage de la Tour des Défis qui débloque le skin
-    // (0 = disponible dès le départ). `pattern` pilote le rendu côté client.
+    // Catalogue des skins emoji. `unlock` = étage de la Tour des Défis qui débloque le skin
+    // (0 = disponible dès le départ). `color` sert au halo, à la minimap et aux restes du serpent.
     const SKINS = {
-        neon:    { name: 'Néon',     primary: '#00ffcc', secondary: '#00997a', glow: '#00ffcc', pattern: 'stripes', unlock: 0 },
-        fire:    { name: 'Feu',      primary: '#ff3300', secondary: '#ff9900', glow: '#ff3300', pattern: 'stripes', unlock: 0 },
-        gold:    { name: 'Or',       primary: '#ffd700', secondary: '#b8860b', glow: '#ffd700', pattern: 'stripes', unlock: 0 },
-        cyber:   { name: 'Cyber',    primary: '#ff00ff', secondary: '#7700ff', glow: '#ff00ff', pattern: 'stripes', unlock: 0 },
-        toxic:   { name: 'Toxique',  primary: '#39ff14', secondary: '#1b8a06', glow: '#39ff14', pattern: 'stripes', unlock: 0 },
-        ice:     { name: 'Glacier',  primary: '#bff4ff', secondary: '#3aa7ff', glow: '#7fdcff', pattern: 'gradient', unlock: 3 },
-        lava:    { name: 'Lave',     primary: '#ff5a00', secondary: '#3a0a00', glow: '#ff3c00', pattern: 'pulse',    unlock: 5 },
-        galaxy:  { name: 'Galaxie',  primary: '#7a5cff', secondary: '#120a3a', glow: '#b49cff', pattern: 'stars',    unlock: 8 },
-        michben: { name: 'michben',  primary: '#ffd700', secondary: '#8a2be2', glow: '#ffcc33', pattern: 'signature', unlock: 10 },
-        shadow:  { name: 'Ombre',    primary: '#2b2b38', secondary: '#0d0d12', glow: '#ff0044', pattern: 'gradient', unlock: 13 },
-        rainbow: { name: 'Arc-en-ciel', primary: '#ff0000', secondary: '#0000ff', glow: '#ffffff', pattern: 'rainbow', unlock: 16 }
+        neon:    { name: 'Serpent',     emoji: '🐍', color: '#39d353', unlock: 0 },
+        fire:    { name: 'Feu',         emoji: '🔥', color: '#ff5a00', unlock: 0 },
+        gold:    { name: 'Étoile',      emoji: '⭐', color: '#ffd700', unlock: 0 },
+        cyber:   { name: 'Alien',       emoji: '👾', color: '#b44dff', unlock: 0 },
+        toxic:   { name: 'Grenouille',  emoji: '🐸', color: '#39ff14', unlock: 0 },
+        ice:     { name: 'Flocon',      emoji: '❄️', color: '#7fdcff', unlock: 3 },
+        lava:    { name: 'Volcan',      emoji: '🌋', color: '#ff3c00', unlock: 5 },
+        galaxy:  { name: 'Planète',     emoji: '🪐', color: '#b49cff', unlock: 8 },
+        michben: { name: 'Couronne',    emoji: '👑', color: '#ffcc33', unlock: 10 },
+        shadow:  { name: 'Crâne',       emoji: '💀', color: '#e6e6f0', unlock: 13 },
+        rainbow: { name: 'Arc-en-ciel', emoji: '🌈', color: '#ff66cc', unlock: 16 }
     };
 
     const BOT_NAMES = ['Viper_FR', 'Cobrakai', 'Kaa', 'Orochimaru', 'SnackAttack', 'SlitherKing',
@@ -159,7 +159,7 @@
         killSnake(id, killerId) {
             const s = this.snakes[id];
             if (!s) return;
-            const color = SKINS[s.skin].primary;
+            const color = SKINS[s.skin].color;
             const value = s.score > 1500 ? 4 : 3;
             for (let i = 0; i < s.segments.length; i += 2) {
                 if (this.foods.length >= CONFIG.FOOD_HARD_CAP) break;
@@ -287,7 +287,7 @@
                     s.score -= CONFIG.BOOST_COST;
                     if (this.tick % 4 === 0 && this.foods.length < CONFIG.FOOD_HARD_CAP) {
                         const tail = s.segments[s.segments.length - 1];
-                        this.foods.push(this.createFood(tail.x, tail.y, 1, SKINS[s.skin].primary));
+                        this.foods.push(this.createFood(tail.x, tail.y, 1, SKINS[s.skin].color));
                     }
                 } else {
                     s.speed = CONFIG.BASE_SPEED;

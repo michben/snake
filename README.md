@@ -23,7 +23,7 @@ Le dossier `public/` peut aussi être servi par n'importe quel hébergeur statiq
 | 🎞️ Interpolation | Tampon de snapshots + horloge lissée : rendu fluide à 60/120 FPS avec un tick serveur à 30 Hz. |
 | 🗺️ Minimap radar | Position du joueur et champ de vision, leader avec couronne 👑, top 10, zones denses en nourriture. |
 | 🗼 Tour des Défis avancée | Missions variées (score, éliminations, orbes chronométrés, survie, classement), étages infinis générés au-delà du 16e. |
-| 🎨 Skins à débloquer | 5 skins de départ + 6 exclusifs (Glacier, Lave, Galaxie, **michben** signature, Ombre, Arc-en-ciel) avec motifs animés. |
+| 🎨 Skins emoji | 11 skins emoji (🐍 🔥 ⭐ 👾 🐸 de base, puis ❄️ 🌋 🪐 👑 💀 🌈 à débloquer). |
 | 📱 Contrôles mobiles | Joystick virtuel dynamique + bouton Boost dédié, HUD réorganisé pour le tactile. |
 | 🔌 Hors-ligne / PWA | Service Worker, manifest installable, bascule automatique en local si le serveur tombe en pleine partie. |
 | 🤖 Bots plus malins | Évitement des corps et murs, recherche de nourriture, chasse des petits serpents. |
