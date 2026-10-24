@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Snake Clash .io</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body, html { width: 100%; height: 100%; overflow: hidden; background: #0b0e14; color: #fff; }
+        canvas { display: block; }
+
+        #menu {
+            position: absolute; inset: 0;
+            background: radial-gradient(circle at center, rgba(18, 24, 38, 0.85), rgba(8, 10, 15, 0.95));
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 10; backdrop-filter: blur(6px);
+        }
+        .card {
+            background: rgba(25, 32, 48, 0.9); border: 2px solid #2a3655;
+            border-radius: 18px; padding: 30px; width: 90%; max-width: 420px;
+            text-align: center; box-shadow: 0 15px 40px rgba(0,0,0,0.6);
+        }
+        h1 { font-size: 2.5rem; margin-bottom: 5px; background: linear-gradient(45deg, #00ffcc, #0099ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-transform: uppercase; letter-spacing: 2px; }
+        .subtitle { color: #8a99ad; font-size: 0.9rem; margin-bottom: 20px; }
+
+        input {
+            width: 100%; padding: 14px; border-radius: 10px; border: 2px solid #2a3655;
+            background: #111622; color: #fff; font-size: 1rem; margin-bottom: 18px; outline: none; text-align: center;
+        }
+        input:focus { border-color: #00ffcc; }
+
+        .skin-selector { display: flex; justify-content: center; gap: 12px; margin-bottom: 22px; }
+        .skin-btn {
+            width: 42px; height: 42px; border-radius: 50%; cursor: pointer;
+            border: 3px solid transparent; transition: transform 0.2s, border-color 0.2s;
+        }
+        .skin-btn.active { border-color: #fff; transform: scale(1.18); }
+
+        .btn-play {
+            width: 100%; padding: 15px; border: none; border-radius: 12px;
+            background: linear-gradient(45deg, #00ffcc, #0088ff); color: #0b0e14;
+            font-size: 1.2rem; font-weight: 800; cursor: pointer; text-transform: uppercase;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .btn-play:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0, 255, 204, 0.4); }
+
+        .tower-box {
+            margin-top: 22px; padding: 14px; border-radius: 12px;
+            background: rgba(15, 20, 30, 0.8); border: 1px solid #ff9900; text-align: left;
+        }
+        .tower-title { font-weight: bold; color: #ffcc00; font-size: 0.95rem; display: flex; justify-content: space-between; margin-bottom: 6px; }
+        .progress-bar { width: 100%; height: 10px; background: #1e2638; border-radius: 5px; overflow: hidden; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #ff6600, #ffcc00); width: 0%; transition: width 0.3s; }
+
+        #hud { position: absolute; inset: 0; pointer-events: none; display: none; }
+        #leaderboard {
+            position: absolute; top: 15px; right: 15px; background: rgba(15, 20, 30, 0.75);
+            padding: 15px; border-radius: 12px; min-width: 200px; border: 1px solid rgba(255,255,255,0.1);
+        }
+        #leaderboard h3 { font-size: 0.95rem; color: #00ffcc; margin-bottom: 8px; text-transform: uppercase; }
+        .lb-item { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 4px; color: #d0d8e8; }
+        .lb-item.me { color: #ffcc00; font-weight: bold; }
+
+        #score-box {
+            position: absolute; bottom: 20px; left: 20px; background: rgba(15, 20, 30, 0.75);
+            padding: 12px 20px; border-radius: 12px; font-size: 1.1rem; font-weight: bold;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+    </style>
+</head>
+<body>
+    <div id="menu">
+        <div class="card">
+            <h1>Snake Clash</h1>
+            <p class="subtitle">Mangez, grandissez et dominez l'arène !</p>
+            <input type="text" id="playerName" placeholder="Votre pseudo..." maxlength="14">
+            <div class="skin-selector" id="skinSelector">
+                <div class="skin-btn active" data-skin="neon" style="background: #00ffcc;"></div>
+                <div class="skin-btn" data-skin="fire" style="background: #ff3300;"></div>
+                <div class="skin-btn" data-skin="gold" style="background: #ffd700;"></div>
+                <div class="skin-btn" data-skin="cyber" style="background: #ff00ff;"></div>
+                <div class="skin-btn" data-skin="toxic" style="background: #39ff14;"></div>
+            </div>
+            <button class="btn-play" id="playBtn">Jouer en ligne</button>
+            <div class="tower-box">
+                <div class="tower-title">
+                    <span>🗼 Tour des Défis</span>
+                    <span id="towerFloor">Étage 1</span>
+                </div>
+                <p id="towerGoal" style="font-size: 0.8rem; color: #9aa8bc; margin-bottom: 8px;">Objectif : Atteindre un score de 500</p>
+                <div class="progress-bar"><div class="progress-fill" id="towerProgress"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="hud">
+        <div id="leaderboard">
+            <h3>🏆 Classement</h3>
+            <div id="lbList"></div>
+        </div>
+        <div id="score-box">
+            Longueur : <span id="currentScore">100</span>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let myId = null;
+        let arenaSize = 3000;
+        let skins = {};
+        let selectedSkin = 'neon';
+        let gameState = { players: {}, foods: [] };
+        let mouseAngle = 0;
+        let isBoosting = false;
+        let camera = { x: 1500, y: 1500 };
+
+        let towerFloor = parseInt(localStorage.getItem('snake_tower_floor') || '1');
+        let bestScore = parseInt(localStorage.getItem('snake_best_score') || '0');
+
+        function updateTowerUI(currentSessionScore = 0) {
+            const targetScore = towerFloor * 500;
+            if (currentSessionScore >= targetScore) {
+                towerFloor++;
+                localStorage.setItem('snake_tower_floor', towerFloor);
+            }
+            const nextTarget = towerFloor * 500;
+            const pct = Math.min(100, Math.floor((Math.max(bestScore, currentSessionScore) / nextTarget) * 100));
+            document.getElementById('towerFloor').innerText = `Étage ${towerFloor}`;
+            document.getElementById('towerGoal').innerText = `Objectif d'étage : Score de ${nextTarget}`;
+            document.getElementById('towerProgress').style.width = `${pct}%`;
+        }
+        updateTowerUI();
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        document.querySelectorAll('.skin-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.skin-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                selectedSkin = btn.dataset.skin;
+            });
+        });
+
+        document.getElementById('playBtn').addEventListener('click', () => {
+            const name = document.getElementById('playerName').value.trim() || 'Serpent';
+            socket.emit('joinGame', { name, skin: selectedSkin });
+            document.getElementById('menu').style.display = 'none';
+            document.getElementById('hud').style.display = 'block';
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            mouseAngle = Math.atan2(e.clientY - canvas.height / 2, e.clientX - canvas.width / 2);
+        });
+        window.addEventListener('mousedown', () => isBoosting = true);
+        window.addEventListener('mouseup', () => isBoosting = false);
+
+        window.addEventListener('touchmove', (e) => {
+            const touch = e.touches[0];
+            mouseAngle = Math.atan2(touch.clientY - canvas.height / 2, touch.clientX - canvas.width / 2);
+        });
+        window.addEventListener('touchstart', (e) => {
+            if (e.touches.length > 1) isBoosting = true;
+            const touch = e.touches[0];
+            mouseAngle = Math.atan2(touch.clientY - canvas.height / 2, touch.clientX - canvas.width / 2);
+        });
+        window.addEventListener('touchend', () => isBoosting = false);
+
+        setInterval(() => {
+            if (myId && gameState.players[myId]) {
+                socket.emit('input', { angle: mouseAngle, boosting: isBoosting });
+            }
+        }, 1000 / 30);
+
+        socket.on('init', (data) => {
+            myId = data.id;
+            arenaSize = data.arenaSize;
+            skins = data.skins;
+        });
+
+        socket.on('gameState', (state) => {
+            gameState = state;
+            const me = gameState.players[myId];
+            if (me) {
+                const sc = Math.floor(me.score);
+                document.getElementById('currentScore').innerText = sc;
+                if (sc > bestScore) {
+                    bestScore = sc;
+                    localStorage.setItem('snake_best_score', bestScore);
+                }
+                updateTowerUI(sc);
+            }
+            updateLeaderboard();
+        });
+
+        socket.on('died', ({ score }) => {
+            document.getElementById('menu').style.display = 'flex';
+            document.getElementById('hud').style.display = 'none';
+            updateTowerUI(score);
+        });
+
+        function updateLeaderboard() {
+            const sorted = Object.values(gameState.players).sort((a, b) => b.score - a.score).slice(0, 6);
+            const lbList = document.getElementById('lbList');
+            lbList.innerHTML = sorted.map((p, idx) => `
+                <div class="lb-item ${p.id === myId ? 'me' : ''}">
+                    <span>#${idx + 1} ${p.name}</span>
+                    <span>${Math.floor(p.score)}</span>
+                </div>
+            `).join('');
+        }
+
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const me = gameState.players[myId];
+            if (me) {
+                camera.x += (me.x - camera.x) * 0.15;
+                camera.y += (me.y - camera.y) * 0.15;
+            }
+
+            ctx.save();
+            ctx.translate(canvas.width / 2 - camera.x, canvas.height / 2 - camera.y);
+
+            ctx.strokeStyle = '#171e2e';
+            ctx.lineWidth = 2;
+            const gridSize = 80;
+            for (let x = 0; x <= arenaSize; x += gridSize) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, arenaSize); ctx.stroke();
+            }
+            for (let y = 0; y <= arenaSize; y += gridSize) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(arenaSize, y); ctx.stroke();
+            }
+
+            ctx.strokeStyle = '#ff0044';
+            ctx.lineWidth = 10;
+            ctx.strokeRect(0, 0, arenaSize, arenaSize);
+
+            gameState.foods.forEach(f => {
+                ctx.save();
+                ctx.beginPath();
+                ctx.shadowColor = f.color;
+                ctx.shadowBlur = 12;
+                ctx.fillStyle = f.color;
+                ctx.arc(f.x, f.y, f.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+
+            Object.values(gameState.players).forEach(p => {
+                const skin = skins[p.skin] || { primary: '#00ffcc', secondary: '#00997a', glow: '#00ffcc' };
+
+                for (let i = p.segments.length - 1; i >= 0; i--) {
+                    const seg = p.segments[i];
+                    ctx.beginPath();
+                    ctx.fillStyle = i % 2 === 0 ? skin.primary : skin.secondary;
+                    if (p.boosting) {
+                        ctx.shadowColor = skin.glow;
+                        ctx.shadowBlur = 15;
+                    }
+                    ctx.arc(seg.x, seg.y, p.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                }
+
+                const head = p.segments[0];
+                if (head) {
+                    const eyeOffset = p.radius * 0.55;
+                    const eyeRadius = p.radius * 0.28;
+                    for (let side of [-1, 1]) {
+                        const ex = head.x + Math.cos(p.angle + side * 0.6) * eyeOffset;
+                        const ey = head.y + Math.sin(p.angle + side * 0.6) * eyeOffset;
+                        ctx.beginPath();
+                        ctx.fillStyle = '#fff';
+                        ctx.arc(ex, ey, eyeRadius, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.beginPath();
+                        ctx.fillStyle = '#000';
+                        ctx.arc(ex + Math.cos(p.angle) * 2, ey + Math.sin(p.angle) * 2, eyeRadius * 0.5, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = 'bold 13px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(p.name, head.x, head.y - p.radius - 10);
+                }
+            });
+
+            ctx.restore();
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>
