@@ -10,9 +10,17 @@ npm start          # http://localhost:3000
 npm test           # simulation du moteur + parcours de connexion X / Facebook simulé
 ```
 
-Variables d'environnement : `PORT` (3000 par défaut), `BOT_COUNT` (bots par arène), `MUSIC_DIR` (musiques envoyées depuis la console, `data/music` par défaut) ; comptes et connexion sociale : voir plus bas.
+Variables d'environnement : `PORT` (3000 par défaut), `BOT_COUNT` (bots par arène), `MUSIC_DIR` (musiques envoyées depuis la console, `DATA_DIR/music` par défaut) ; comptes et connexion sociale : voir plus bas.
 
 Le dossier `public/` peut aussi être servi par n'importe quel hébergeur statique (GitHub Pages…) : le jeu détecte l'absence de serveur et passe automatiquement en mode hors-ligne avec bots.
+
+## Mettre le jeu en ligne (jouer entre amis)
+
+[![Déployer sur Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/michben/snake)
+
+Le fichier `render.yaml` décrit tout : serveur Node, vérification `/health` et un **disque persistant** monté sur `/var/data` (`DATA_DIR`) pour garder les comptes, sessions, photos de profil et musiques importées. Derrière le proxy HTTPS de l'hébergeur, l'adresse publique est déduite toute seule (`RENDER_EXTERNAL_URL` sur Render, sinon `PUBLIC_URL`).
+
+Pour la connexion X : sur developer.x.com, créer une app, activer « User authentication » (OAuth 2.0, type *Web App*), URL de retour `https://<votre-adresse>/auth/x/callback`, puis coller le *Client ID* et le *Client Secret* dans `X_CLIENT_ID` / `X_CLIENT_SECRET` côté hébergeur.
 
 ## Nouveautés de la v2
 
@@ -53,7 +61,7 @@ Le dossier `public/` peut aussi être servi par n'importe quel hébergeur statiq
 | --- | --- |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Compte admin (sans `ADMIN_PASSWORD`, un mot de passe temporaire est affiché au premier démarrage). |
 | `DATA_DIR` | Comptes, sessions et photos de profil (`data/` par défaut). |
-| `PUBLIC_URL` | Adresse publique du jeu, pour les retours de connexion X / Facebook. |
+| `PUBLIC_URL` | Adresse publique du jeu, pour les retours de connexion X / Facebook (facultatif sur Render). |
 | `X_CLIENT_ID` / `X_CLIENT_SECRET` | Application X (OAuth 2.0, developer.x.com). |
 | `FACEBOOK_APP_ID` / `FACEBOOK_APP_SECRET` | Application Facebook Login (developers.facebook.com). |
 

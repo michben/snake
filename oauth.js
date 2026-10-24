@@ -83,7 +83,7 @@ function setupOAuth(app, { accounts, dataDir }) {
         }
     }
 
-    const publicUrl = (req) => (env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    const publicUrl = (req) => (env.PUBLIC_URL || env.RENDER_EXTERNAL_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
     const pending = new Map();   // state -> { provider, verifier, at }
 
     app.get('/api/auth/providers', (req, res) => res.json({ x: providers.x.enabled, facebook: providers.facebook.enabled }));

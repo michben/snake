@@ -15,6 +15,8 @@ const { setupOAuth } = require('./oauth');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { perMessageDeflate: { threshold: 1024 } });
+// Derrière l'hébergeur (Render, Railway…), le HTTPS est terminé par un proxy : on lui fait confiance
+app.set('trust proxy', 1);
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/health', (req, res) => res.json({ ok: true, players: Object.keys(clients).length, tick: worlds.neon.tick }));
@@ -22,7 +24,8 @@ app.get('/health', (req, res) => res.json({ ok: true, players: Object.keys(clien
 // ---------- Musiques & console admin ----------
 // Emplacements : `menu` (présentation), `game` (niveau 1) et `game2` (niveau 2). Les fichiers
 // sont stockés dans MUSIC_DIR avec un petit manifeste JSON à côté.
-const MUSIC_DIR = path.resolve(process.env.MUSIC_DIR || path.join(__dirname, 'data', 'music'));
+const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
+const MUSIC_DIR = path.resolve(process.env.MUSIC_DIR || path.join(DATA_DIR, 'music'));
 const MUSIC_SLOTS = ['menu', 'game', 'game2'];
 const MUSIC_EXT = ['mp3', 'ogg', 'oga', 'opus', 'wav', 'm4a', 'aac', 'flac', 'webm'];
 const MUSIC_MAX_BYTES = 20 * 1024 * 1024;
@@ -30,7 +33,6 @@ const MANIFEST = path.join(MUSIC_DIR, 'manifest.json');
 fs.mkdirSync(MUSIC_DIR, { recursive: true });
 
 // ---------- Comptes joueurs ----------
-const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
 let ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const accounts = createAccounts({
     dataDir: DATA_DIR,
