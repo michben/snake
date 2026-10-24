@@ -30,7 +30,10 @@
             <div class="account-bar">
                 <span class="acc-avatar" id="accAvatar">👤</span>
                 <span class="acc-text" id="accText">Invité · tes records restent sur cet appareil</span>
-                <button class="btn btn-small" id="accountBtn">Se connecter</button>
+                <div class="acc-buttons">
+                    <button class="btn btn-small" id="accountBtn">Se connecter</button>
+                    <button class="btn btn-small btn-ghost hidden" id="accLogout" title="Se déconnecter">⏻ Déconnexion</button>
+                </div>
             </div>
 
             <input type="text" id="playerName" placeholder="Votre pseudo..." maxlength="14" autocomplete="off">
@@ -186,6 +189,7 @@
                     <p class="help">📸 Ta photo de profil devient ton skin en jeu.</p>
                 </div>
                 <p class="help hidden" id="authOffline">Les comptes et le classement mondial demandent le serveur du jeu : il n'est pas joignable pour l'instant.</p>
+                <button class="btn btn-secondary hidden" id="resumeViewer">👤 Reprendre mon profil claude.ai</button>
                 <p class="admin-msg" id="authMsg"></p>
             </div>
             <div id="authProfile" class="hidden">
@@ -193,7 +197,7 @@
                     <div class="prof-avatar" id="profAvatar">🐍</div>
                     <div><b id="profName"></b><small id="profSub"></small></div>
                 </div>
-                <div class="records">
+                <div class="records" id="profStats">
                     <div>Record<b id="profBest">0</b></div>
                     <div>Éliminations<b id="profKills">0</b></div>
                     <div>Parties<b id="profGames">0</b></div>

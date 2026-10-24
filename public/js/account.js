@@ -56,6 +56,22 @@
 
         logout() { this.setSession('', null); },
 
+        // Bouton « Se déconnecter » du menu : ferme la session du serveur, ou (version web)
+        // arrête d'utiliser le profil claude.ai pour jouer en invité
+        guest: store.get('snake_guest', '0') === '1',
+        viewerProfile: null,
+        signedIn() { return !!(this.user || this.viewer); },
+        signOut() {
+            if (this.user) this.logout();
+            else if (this.viewer) { this.guest = true; store.set('snake_guest', '1'); this.viewer = null; this.emit(); }
+        },
+        useViewer() {
+            if (!this.viewerProfile) return;
+            this.guest = false; store.set('snake_guest', '0');
+            this.viewer = this.viewerProfile;
+            this.emit();
+        },
+
         async api(method, path, body) {
             const res = await fetch(path, {
                 method,
@@ -111,7 +127,8 @@
             if (!user) return;
             const me = await user.me();
             const hasPhoto = !!me.avatarUrl && !/^data:/.test(me.avatarUrl);
-            A.viewer = { name: me.name || '', email: me.email || null, owner: !!me.isOwner, avatarUrl: me.avatarUrl, photo: hasPhoto };
+            A.viewerProfile = { name: me.name || '', email: me.email || null, owner: !!me.isOwner, avatarUrl: me.avatarUrl, photo: hasPhoto };
+            if (!A.guest) A.viewer = A.viewerProfile;
             A.emit();
         }).catch(() => { /* pas d'identité */ });
     }
@@ -137,8 +154,11 @@
     function renderAuth() {
         const u = A.user;
         const online = A.online();
-        $('authForms').classList.toggle('hidden', !!u);
-        $('authProfile').classList.toggle('hidden', !u);
+        const v = !u && !online ? A.viewer : null;        // version web : profil claude.ai
+        $('authForms').classList.toggle('hidden', !!(u || v));
+        $('authProfile').classList.toggle('hidden', !(u || v));
+        $('profStats').classList.toggle('hidden', !u);
+        $('resumeViewer').classList.toggle('hidden', !!(u || v || online || !A.viewerProfile));
         $('authForm').classList.toggle('hidden', !online);
         $('authOffline').classList.toggle('hidden', online);
         $('socialBox').classList.toggle('hidden', !online || !(A.providers.x || A.providers.facebook));
@@ -146,6 +166,11 @@
         $('loginFb').classList.toggle('hidden', !A.providers.facebook);
         if (A.viewer && !online) {
             $('authOffline').textContent = `Version web : tu joues en tant que ${A.viewer.name || 'visiteur'}. Les comptes et le classement mondial sont sur le serveur du jeu.`;
+        }
+        if (v) {
+            $('profAvatar').innerHTML = v.photo ? `<img src="${escapeHtml(v.avatarUrl)}" alt="">` : '🐍';
+            $('profName').textContent = (v.name || 'Visiteur') + (A.isAdmin() ? ' · 👑 admin' : '');
+            $('profSub').textContent = 'Version web · records sur cet appareil';
         }
         if (u) {
             const photo = A.photoUrl();
@@ -227,7 +252,8 @@
     $('authForm').addEventListener('submit', submit);
     $('authClose').addEventListener('click', A.close);
     $('authScreen').addEventListener('click', (e) => { if (e.target === $('authScreen')) A.close(); });
-    $('logoutBtn').addEventListener('click', () => { A.logout(); renderAuth(); });
+    $('logoutBtn').addEventListener('click', () => { A.signOut(); renderAuth(); });
+    $('resumeViewer').addEventListener('click', () => { A.useViewer(); renderAuth(); });
     document.querySelectorAll('#hallScreen .tab').forEach(b => b.addEventListener('click', () => { hallTab = b.dataset.hall; renderHall(); }));
     $('hallClose').addEventListener('click', () => $('hallScreen').classList.add('hidden'));
     $('hallScreen').addEventListener('click', (e) => { if (e.target === $('hallScreen')) $('hallScreen').classList.add('hidden'); });

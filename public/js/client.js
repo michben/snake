@@ -705,6 +705,7 @@
             $('accText').textContent = 'Invité · inscris-toi pour entrer au classement mondial';
             $('accountBtn').textContent = 'Se connecter';
         }
+        $('accLogout').classList.toggle('hidden', !u && !(v && !net.connected));
         if (!$('playerName').value && Account.displayName()) $('playerName').value = Account.displayName();
         buildSkinSelector();
     }
@@ -790,6 +791,16 @@
 
     $('adminBtn').addEventListener('click', () => { Sound.play('click'); window.SnakeAdmin.open(); });
     $('accountBtn').addEventListener('click', () => { Sound.play('click'); Account.open(); });
+    $('accLogout').addEventListener('click', () => {
+        Sound.play('click');
+        const was = Account.displayName();
+        Account.signOut();
+        if ($('playerName').value === was) $('playerName').value = '';
+        prefs.photo = false;
+        store.set('snake_photo', '0');
+        toast('👋 Déconnecté', 'info');
+        updateAccountUI();
+    });
     $('hallBtn').addEventListener('click', () => { Sound.play('click'); Account.openHall(); });
     $('deathHallBtn').addEventListener('click', () => { Sound.play('click'); Account.openHall(); });
 
