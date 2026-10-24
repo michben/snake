@@ -80,6 +80,7 @@
 
         isUnlocked(skinKey) {
             const s = root.SnakeCore.SKINS[skinKey];
+            if (s && s.quest) return (root.SnakeQuests ? root.SnakeQuests.daysDone : 0) >= s.quest;
             return !!s && s.unlock <= this.floor;
         },
 
