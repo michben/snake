@@ -17,7 +17,7 @@ canvas#gameCanvas { display: block; position: absolute; inset: 0; }
 .screen {
     position: absolute; inset: 0; z-index: 10;
     background: radial-gradient(circle at center, rgba(18, 24, 38, 0.82), rgba(8, 10, 15, 0.96));
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    display: flex; flex-direction: column; align-items: center;   /* centrage par margin:auto de la carte : défilable si elle dépasse */
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     padding: 16px; overflow-y: auto;
 }
@@ -123,7 +123,8 @@ input[type=text]:focus { border-color: var(--accent); }
 #missionHud .mh-goal { font-size: 0.8rem; color: #d6deea; margin-bottom: 6px; }
 #missionHud .mh-val { font-size: 0.72rem; color: var(--muted); margin-top: 4px; text-align: right; }
 
-#minimap { position: absolute; bottom: 16px; right: 16px; width: 170px; height: 170px; border-radius: 12px; }
+#minimapWrap { position: absolute; bottom: 16px; right: 16px; width: 170px; height: 170px; pointer-events: auto; }
+#minimap { display: block; width: 100%; height: 100%; border-radius: 12px; }
 #netInfo { position: absolute; bottom: 196px; right: 18px; font-size: 0.7rem; color: var(--muted); text-align: right; }
 
 #toasts { position: absolute; top: 18%; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 20; pointer-events: none; }
@@ -160,7 +161,7 @@ input[type=text]:focus { border-color: var(--accent); }
 #boostBtn.active { background: radial-gradient(circle at 35% 35%, rgba(255,230,0,0.8), rgba(255,102,0,0.6)); color: #1a0e00; transform: scale(0.94); }
 
 /* Disposition tactile : colonne d'infos à gauche, classement à droite, bas de l'écran libre pour joystick + boost */
-body.touch #minimap { bottom: auto; top: 10px; right: auto; left: 10px; width: 110px; height: 110px; }
+body.touch #minimapWrap { width: 110px; height: 110px; }
 body.touch #stats { bottom: auto; top: 128px; left: 10px; padding: 6px 10px; gap: 10px; }
 body.touch #stats div { font-size: 0.6rem; }
 body.touch #stats b { font-size: 0.95rem; }
@@ -233,5 +234,114 @@ body.touch #netInfo { bottom: 6px; right: auto; left: 50%; transform: translateX
 }
 .power-chip.ending { animation: blink 0.5s infinite; }
 .toast.power { color: #ff9cf5; border-color: rgba(255,61,240,0.5); }
-body.touch #powerHud { bottom: auto; top: 178px; left: 185px; flex-direction: column; }
 body.touch #hudSound { top: 10px; }
+
+/* ---------- Niveaux ---------- */
+.level-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+.level-card {
+    display: flex; gap: 8px; align-items: center; text-align: left; padding: 10px; border-radius: 12px; cursor: pointer;
+    border: 2px solid #2a3655; color: #fff; background-size: cover; transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.level-card:hover { transform: translateY(-1px); }
+.level-card.level-neon { background: radial-gradient(circle at 20% 20%, rgba(120,60,255,0.45), transparent 60%), linear-gradient(135deg, #070b18, #10183a); }
+.level-card.level-volcan { background: radial-gradient(circle at 80% 90%, rgba(255,90,0,0.55), transparent 60%), linear-gradient(135deg, #1c0d09, #3a1206); }
+.level-card.active { border-color: #fff; box-shadow: 0 0 16px rgba(0,255,204,0.35); }
+.level-card.level-volcan.active { box-shadow: 0 0 16px rgba(255,90,0,0.5); }
+.lv-icon { font-size: 1.8rem; line-height: 1; }
+.lv-text b { display: block; font-size: 0.85rem; }
+.lv-text small { display: block; font-size: 0.66rem; color: #c3cad8; line-height: 1.25; margin-top: 2px; }
+
+/* ---------- HUD : colonne gauche et panneaux réductibles ---------- */
+#hudLeft { position: absolute; top: 14px; left: 14px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+#hudLeft > #missionHud, #hudLeft > #stats, #hudLeft > #minimapWrap, #hudLeft > #powerHud { position: relative; top: auto; left: auto; right: auto; bottom: auto; transform: none; }
+#hudLeft > #powerHud { flex-direction: column; }
+.collapsible { pointer-events: none; }
+.collapse-btn {
+    position: absolute; top: 5px; right: 5px; z-index: 2; width: 22px; height: 22px; border-radius: 7px; cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.08); color: #cfd8e6;
+    font-size: 0.8rem; line-height: 1; display: flex; align-items: center; justify-content: center; pointer-events: auto;
+}
+.collapse-btn:hover { background: rgba(255,255,255,0.18); }
+#leaderboard h3 { padding-right: 24px; }
+#missionHud .mh-title { padding-right: 22px; }
+.collapsible.collapsed { padding: 0 !important; width: auto !important; min-width: 0 !important; height: auto !important; background: none; border: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.collapsible.collapsed > :not(.collapse-btn) { display: none !important; }
+.collapsible.collapsed > .collapse-btn {
+    position: static; width: 40px; height: 40px; border-radius: 12px; font-size: 1.15rem;
+    background: var(--panel); border: 1px solid var(--panel-border); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+}
+#minimapWrap.collapsed { width: auto; height: auto; }
+body.touch #hudLeft { top: 10px; left: 10px; gap: 6px; }
+body.touch #hudLeft #stats { padding: 6px 10px; padding-right: 30px; }
+body.touch .collapsible.collapsed > .collapse-btn { width: 36px; height: 36px; }
+#stats { padding-right: 34px; }
+
+/* ---------- Comptes, records, quêtes, événements ---------- */
+.account-bar {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding: 8px 10px; border-radius: 14px;
+    background: rgba(255,255,255,0.04); border: 1px solid #2a3655; text-align: left;
+}
+.acc-avatar, .prof-avatar {
+    flex: none; width: 34px; height: 34px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center;
+    background: #111622; border: 2px solid var(--accent); font-size: 1.1rem;
+}
+.acc-avatar img, .prof-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.acc-text { flex: 1; min-width: 0; font-size: 0.78rem; color: #cfd8e6; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; }
+.acc-text b { color: #fff; }
+.account-bar .btn-small { flex: none; }
+
+.tabs { display: flex; gap: 6px; margin-bottom: 12px; background: rgba(255,255,255,0.04); padding: 4px; border-radius: 12px; }
+.tab { flex: 1; padding: 8px; border: none; border-radius: 9px; background: transparent; color: var(--muted); font-weight: 700; cursor: pointer; font-size: 0.85rem; }
+.tab.active { background: rgba(0,255,204,0.15); color: var(--accent); }
+#authForm input {
+    width: 100%; padding: 12px; border-radius: 12px; border: 2px solid #2a3655; background: #111622; color: #fff;
+    font-size: 0.95rem; margin-bottom: 10px; outline: none; text-align: left; user-select: text; -webkit-user-select: text;
+}
+#authForm input:focus { border-color: var(--accent); }
+.or { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 0.75rem; margin: 14px 0 10px; }
+.or::before, .or::after { content: ''; flex: 1; height: 1px; background: #2a3655; }
+.btn-social { display: flex; align-items: center; justify-content: center; text-decoration: none; font-size: 0.9rem; padding: 12px; margin-top: 8px; text-transform: none; }
+.btn-x { background: #000; color: #fff; border: 1px solid #444; }
+.btn-fb { background: #1877f2; color: #fff; }
+.btn-fb b { font-family: Arial, sans-serif; font-size: 1.1rem; }
+.profile-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.profile-row .prof-avatar { width: 56px; height: 56px; font-size: 1.6rem; }
+.profile-row b { display: block; font-size: 1.05rem; }
+.profile-row small { color: var(--muted); font-size: 0.78rem; }
+
+.hall-list { max-height: 56vh; overflow-y: auto; }
+.hall-row { display: grid; grid-template-columns: 36px 1fr auto auto; align-items: center; gap: 8px; padding: 8px 6px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.85rem; }
+.hall-row .rk { text-align: center; font-weight: 800; color: var(--muted); }
+.hall-row .nm { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hall-row .av { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; }
+.hall-row .sub { font-size: 0.7rem; color: var(--muted); }
+.hall-row b { color: var(--gold); }
+.hall-row.me { background: rgba(255,204,0,0.08); border-radius: 8px; }
+
+.quest-box { border-color: rgba(0,255,204,0.5); margin-top: 10px; }
+.quest-box .tower-title { color: var(--accent); }
+.quest { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 8px; font-size: 0.8rem; color: #d6deea; margin: 6px 0; }
+.quest .progress-bar { grid-column: 2 / 4; height: 6px; margin-top: -2px; }
+.quest .progress-fill { background: linear-gradient(90deg, #00ffcc, #0088ff); }
+.quest small { color: var(--muted); font-size: 0.72rem; }
+.quest.done { color: #7dffcb; }
+.quest.done .progress-fill { background: #39ff14; }
+
+.track-card.drop { border-color: var(--accent); background: rgba(0,255,204,0.08); }
+.file-input { display: none; }
+.skin-btn.photo { overflow: hidden; padding: 0; }
+.skin-btn.photo img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+
+#eventBanner {
+    position: absolute; top: 58px; left: 50%; transform: translateX(-50%); padding: 8px 18px; border-radius: 999px;
+    background: rgba(15,20,30,0.85); border: 2px solid #ff3df0; color: #fff; font-weight: 800; font-size: 0.95rem;
+    box-shadow: 0 0 22px rgba(255,61,240,0.5); white-space: nowrap; animation: bannerIn 0.5s ease-out;
+}
+#eventBanner small { font-weight: 600; color: #ffc6f7; margin-left: 6px; }
+#eventBanner.boss { border-color: #3dff8a; box-shadow: 0 0 22px rgba(61,255,138,0.5); }
+@keyframes bannerIn { from { transform: translateX(-50%) scale(1.6); opacity: 0; } to { transform: translateX(-50%) scale(1); opacity: 1; } }
+body.touch #eventBanner { top: 48px; font-size: 0.8rem; padding: 6px 12px; }
+.toast.event { color: #ffc6f7; border-color: rgba(255,61,240,0.6); font-size: 1.05rem; }
+.toast.quest { color: #7dffcb; border-color: rgba(0,255,204,0.6); }
+#deathHallBtn { flex: 0 0 58px; }
+@media (max-width: 480px) { #menu .card { padding-top: 56px; } }

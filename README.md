@@ -7,10 +7,10 @@ Jeu `.io` multijoueur temps réel : mangez, grandissez et dominez l'arène. Joua
 ```bash
 npm install
 npm start          # http://localhost:3000
-npm test           # simulation de 2 min du moteur (fumée)
+npm test           # simulation du moteur + parcours de connexion X / Facebook simulé
 ```
 
-Variables d'environnement : `PORT` (3000 par défaut), `BOT_COUNT` (10 par défaut), `ADMIN_PASSWORD` (mot de passe de la console admin ; s'il n'est pas défini, un mot de passe temporaire est affiché dans la console au démarrage), `MUSIC_DIR` (dossier des musiques envoyées, `data/music` par défaut).
+Variables d'environnement : `PORT` (3000 par défaut), `BOT_COUNT` (bots par arène), `MUSIC_DIR` (musiques envoyées depuis la console, `data/music` par défaut) ; comptes et connexion sociale : voir plus bas.
 
 Le dossier `public/` peut aussi être servi par n'importe quel hébergeur statique (GitHub Pages…) : le jeu détecte l'absence de serveur et passe automatiquement en mode hors-ligne avec bots.
 
@@ -29,26 +29,53 @@ Le dossier `public/` peut aussi être servi par n'importe quel hébergeur statiq
 | 🤖 Bots plus malins | Évitement des corps et murs, recherche de nourriture, chasse des petits serpents. |
 | ✨ Divers | Aimant à nourriture, tête-à-tête (le plus gros gagne), dézoom quand on grossit, écran de fin avec stats et records. |
 
+## Niveaux
+
+| Niveau | Ambiance |
+| --- | --- |
+| 🌌 Arène Néon | Grande arène sous les étoiles (4000 px, 10 bots). |
+| 🌋 Cratère Volcan | Arène plus serrée, bots agressifs, éruptions annoncées qui crachent orbes et coffres. Musique dédiée. |
+
 ## Son, musiques et console admin
 
-- **Bruitages** générés en direct (Web Audio, aucun fichier) : orbe mangée (plus aigu quand on enchaîne), boost, élimination, game over, coffre, chaque bonus, fin de bonus, étage de la Tour réussi.
-- **Deux musiques** à fournir : 🎬 *présentation* (menu et écran de fin) et 🎮 *en partie*, en boucle avec fondu enchaîné.
-- **Console admin** : bouton ⚙️ du menu (ou `…/#admin`). Volumes musique / bruitages, test de chaque bruitage, envoi des deux musiques (MP3, OGG, WAV, M4A…, 20 Mo max).
-  - Serveur connecté : connexion avec `ADMIN_PASSWORD`, la musique est envoyée au serveur et jouée chez **tous les joueurs** (rechargée en direct).
-  - Sans serveur : la musique est gardée **sur l'appareil** (IndexedDB).
-- 🔊 / `M` : couper ou remettre le son à tout moment.
+- **Musiques intégrées** (par michben) : `public/music/intro.mp3` (snake.mp3) pour le menu, `public/music/game.mp3` (snake 1.mp3) en partie. Lecture en Web Audio : la boucle est continue, sans blanc, avec un fondu entre menu et partie.
+- **Bruitages** générés en direct (Web Audio, aucun fichier) : orbe, boost, élimination, game over, coffres, chaque pouvoir, éruption, événements fous, Hydre, quête réussie…
+- **Console admin** : bouton ⚙️ (ou `…/#admin`). Volumes et test des bruitages pour tout le monde ; la gestion des musiques (importer, écouter, retirer) est **réservée au compte admin** `ADMIN_EMAIL` (sospchs@gmail.com par défaut), vérifié par le serveur à chaque envoi. Import par bouton ou glisser-déposer (MP3, OGG, WAV, M4A…, 20 Mo max) ; la musique est jouée chez tous les joueurs.
 
-## Coffres et bonus d'amélioration
+## Comptes, classement et quêtes
 
-| Objet | Effet |
+- **Inscription / connexion** par e-mail + mot de passe (haché en scrypt, sessions signées de 30 jours). Les records des joueurs connectés alimentent le **🏆 tableau des records mondial** ; l'onglet « Mes parties » garde les 15 meilleures parties de l'appareil.
+- **Connexion X et Facebook** : la photo de profil devient le skin du serpent (📸 dans le choix des skins). À activer en créant une application chez chaque fournisseur, avec comme URL de retour `<PUBLIC_URL>/auth/x/callback` et `<PUBLIC_URL>/auth/facebook/callback`.
+- **Compte admin** : `ADMIN_EMAIL` + `ADMIN_PASSWORD`. L'adresse admin ne peut pas être prise à l'inscription et un compte X / Facebook n'est jamais admin.
+- **📅 Quêtes du jour** : 3 quêtes tirées chaque jour (orbes, kills, coffres, pouvoirs, score, survie, Volcan, événements, Hydre). Réussir les 3 une journée débloque 🦄 Licorne, trois journées 🐉 Dragon.
+
+| Variable | Rôle |
 | --- | --- |
-| 🎁 Coffre | +150 à 400 points et une gerbe d'orbes dorées ; 40 % de chances de contenir un bonus en prime. |
-| 🧲 Super-aimant (12 s) | Attire la nourriture 4× plus loin. |
-| ⚡ Turbo gratuit (8 s) | Boost sans perte de score. |
-| 🛡️ Bouclier (8 s) | Traverse les autres serpents et rebondit sur la bordure. |
-| 💎 Score x2 (15 s) | Double les points des orbes et des coffres. |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Compte admin (sans `ADMIN_PASSWORD`, un mot de passe temporaire est affiché au premier démarrage). |
+| `DATA_DIR` | Comptes, sessions et photos de profil (`data/` par défaut). |
+| `PUBLIC_URL` | Adresse publique du jeu, pour les retours de connexion X / Facebook. |
+| `X_CLIENT_ID` / `X_CLIENT_SECRET` | Application X (OAuth 2.0, developer.x.com). |
+| `FACEBOOK_APP_ID` / `FACEBOOK_APP_SECRET` | Application Facebook Login (developers.facebook.com). |
 
-Les coffres apparaissent sur la minimap (points dorés) ; les bots les convoitent aussi.
+## Coffres, pouvoirs et événements fous
+
+Les coffres 🎁 (et légendaires 👑, plus gros) donnent des points, une gerbe d'orbes et souvent un pouvoir ; une flèche au bord de l'écran indique le plus proche.
+
+| Pouvoir | Effet |
+| --- | --- |
+| 🧲 Super-aimant (15 s) | Attire la nourriture 5× plus loin. |
+| ⚡ Turbo (10 s) | Boost gratuit et plus rapide. |
+| 🛡️ Bouclier (10 s) | Traverse les serpents, rebondit sur la bordure. |
+| 💎 Score x3 (20 s) | Triple les points. |
+| 🗡️ Crocs (8 s) | Les serpents que vous touchez meurent. |
+| 🍖 Festin | Pluie d'orbes devant vous. |
+| ❄️ Blizzard | Gèle les serpents proches 5 s (lents, tournent mal). |
+| 👻 Fantôme (10 s) | Traversez les murs ; les autres passent à travers vous. |
+| 🍄 Géant (12 s) | Serpent énorme qui gagne tous les face-à-face. |
+| 💥 Onde de choc | Les serpents proches lâchent un quart de leurs points en orbes. |
+| 🌀 Portail | Téléporte à côté d'un coffre. |
+
+Toutes les 45 à 80 s, un **événement fou** tombe sur l'arène : 🌧️ Pluie d'or, 🐉 l'Hydre (boss géant qui lâche deux coffres légendaires), ⚡ Frénésie, 🌑 Éclipse, 🎁 Déluge de coffres, 🔄 Monde à l'envers (commandes inversées).
 
 ## Contrôles
 
@@ -58,7 +85,9 @@ Les coffres apparaissent sur la minimap (points dorés) ; les bots les convoiten
 ## Structure
 
 ```text
-├── server.js              # Express + Socket.io, boucle 30 Hz, culling par joueur, API musiques/admin
+├── server.js              # Express + Socket.io, boucle 30 Hz, culling par joueur, API musiques/admin/comptes
+├── accounts.js            # comptes, sessions signées, records, droits admin
+├── oauth.js               # connexion X / Facebook et photos de profil
 ├── public/
 │   ├── index.html
 │   ├── css/style.css
@@ -67,8 +96,12 @@ Les coffres apparaissent sur la minimap (points dorés) ; les bots les convoiten
 │   ├── js/client.js       # rendu, interpolation, minimap, contrôles, mode hors-ligne
 │   ├── js/audio.js        # bruitages synthétisés + musiques (fondu, serveur ou appareil)
 │   ├── js/admin.js        # console admin (volumes, musiques, test des bruitages)
+│   ├── js/account.js      # inscription, connexion, profil, tableau des records
+│   ├── js/quests.js       # quêtes du jour
+│   ├── js/fx.js           # décors des niveaux, particules, secousses
+│   ├── music/             # musiques intégrées (menu, partie)
 │   ├── sw.js / manifest.webmanifest / icon.svg
-└── test/simulate.js
+└── test/simulate.js, test/oauth.js
 ```
 
 ---

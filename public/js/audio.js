@@ -1,16 +1,16 @@
 /*
- * Mich Snake — audio : bruitages synthétisés (Web Audio) + deux musiques
- * personnalisables (présentation / en partie).
+ * Mich Snake — audio : bruitages synthétisés (Web Audio) + musiques
+ * personnalisables (présentation, niveau 1, niveau 2).
  *
  * Les bruitages sont générés à la volée : aucun fichier à télécharger.
- * Les musiques viennent soit du serveur (console admin, pour tous les joueurs),
- * soit de l'appareil (IndexedDB, quand on joue sans serveur).
+ * Les musiques viennent de l'appareil (IndexedDB), sinon du serveur (console
+ * admin, pour tous les joueurs), sinon des musiques fournies avec le jeu.
  */
 (function (root) {
     'use strict';
 
     const store = root.SnakeStore;
-    const SLOTS = ['menu', 'game'];
+    const SLOTS = ['menu', 'game', 'game2'];
 
     const settings = {
         music: parseFloat(store.get('snake_vol_music', '0.6')),
@@ -42,10 +42,7 @@
 
     function applyVolumes() {
         if (sfxBus) sfxBus.gain.value = settings.muted ? 0 : settings.sfx * 0.9;
-        for (const slot of SLOTS) {
-            const t = music.tracks[slot];
-            if (t.el) t.el.volume = settings.muted ? 0 : settings.music * t.fade;
-        }
+        applyMusicVolume();
     }
 
     // ---------- Briques de synthèse ----------
@@ -120,11 +117,27 @@
             arp([392, 330, 262], 0.28, { type: 'triangle', vol: 0.2, dur: 0.38, delay: 0.55 });
             tone(196, 0.9, { type: 'triangle', vol: 0.18, delay: 1.4 });
         },
-        chest() {
+        chest(kind) {
             noise(0.22, { freq: 320, sweep: 180, q: 6, vol: 0.25 });                 // grincement du couvercle
             tone(988, 0.12, { type: 'square', vol: 0.08, delay: 0.12 });             // pièce
             tone(1319, 0.3, { type: 'square', vol: 0.08, delay: 0.2 });
             arp([1047, 1319, 1568, 2093, 2637], 0.05, { type: 'sine', vol: 0.12, dur: 0.25, delay: 0.3 }); // scintillement
+            if (kind === 'legend') {                                                  // chœur du coffre légendaire
+                [523, 659, 784, 1047].forEach((f) => tone(f, 1.1, { type: 'triangle', vol: 0.09, delay: 0.55, attack: 0.08 }));
+                arp([2093, 2637, 3136, 4186], 0.07, { type: 'sine', vol: 0.07, dur: 0.3, delay: 0.7 });
+            }
+        },
+        eruption() {
+            noise(1.2, { filter: 'lowpass', freq: 400, sweep: 60, vol: 0.45, attack: 0.03 });
+            tone(70, 1, { type: 'sawtooth', vol: 0.12, slide: 35 });
+            noise(0.6, { freq: 1200, sweep: 300, q: 0.7, vol: 0.12, delay: 0.15 });
+        },
+        warning() {
+            tone(180, 0.18, { type: 'square', vol: 0.05 });
+            tone(150, 0.18, { type: 'square', vol: 0.05, delay: 0.22 });
+        },
+        hit() {
+            noise(0.12, { filter: 'lowpass', freq: 900, vol: 0.2 });
         },
         power(kind) {
             switch (kind) {
@@ -139,13 +152,58 @@
                 case 'shield':
                     arp([392, 494, 587, 784], 0.07, { type: 'triangle', vol: 0.16, dur: 0.6 });
                     break;
-                case 'double':
+                case 'triple':
                     tone(1319, 0.12, { type: 'square', vol: 0.08 });
-                    tone(1760, 0.35, { type: 'square', vol: 0.08, delay: 0.09 });
+                    tone(1760, 0.12, { type: 'square', vol: 0.08, delay: 0.09 });
+                    tone(2349, 0.35, { type: 'square', vol: 0.08, delay: 0.18 });
+                    break;
+                case 'blade':
+                    noise(0.25, { freq: 3000, sweep: 7000, q: 8, vol: 0.2 });        // lame qu'on dégaine
+                    tone(220, 0.4, { type: 'sawtooth', vol: 0.1, slide: 110, delay: 0.05 });
+                    break;
+                case 'feast':
+                    arp([392, 523, 659, 784, 1047, 1319], 0.035, { type: 'sine', vol: 0.12, dur: 0.12 });
+                    noise(0.4, { freq: 2000, sweep: 6000, q: 1, vol: 0.08 });
+                    break;
+                case 'freeze':
+                    noise(0.8, { freq: 6000, sweep: 1500, q: 4, vol: 0.14 });          // vent glacé
+                    arp([1568, 1976, 2349, 2637, 3136], 0.05, { type: 'sine', vol: 0.08, dur: 0.4 });
+                    break;
+                case 'ghost':
+                    tone(330, 0.9, { type: 'sine', vol: 0.12, slide: 660, attack: 0.15 });
+                    tone(336, 0.9, { type: 'sine', vol: 0.1, slide: 500, attack: 0.15 });
+                    break;
+                case 'giant':
+                    arp([131, 165, 196, 262], 0.09, { type: 'square', vol: 0.12, dur: 0.25 });
+                    tone(65, 0.7, { type: 'sawtooth', vol: 0.12, delay: 0.3 });
+                    break;
+                case 'shock':
+                    noise(0.6, { filter: 'lowpass', freq: 2500, sweep: 60, vol: 0.45 });
+                    tone(90, 0.5, { type: 'sine', vol: 0.3, slide: 30 });
+                    break;
+                case 'portal':
+                    tone(200, 0.45, { type: 'sine', vol: 0.15, slide: 1600 });
+                    noise(0.45, { freq: 300, sweep: 5000, q: 6, vol: 0.12 });
+                    tone(1600, 0.35, { type: 'triangle', vol: 0.08, slide: 400, delay: 0.42 });
                     break;
                 default:
                     arp([523, 784, 1047], 0.06, { type: 'triangle', vol: 0.15, dur: 0.3 });
             }
+        },
+        // Événement fou : sirène de fête foraine
+        event() {
+            for (let i = 0; i < 3; i++) tone(500, 0.18, { type: 'square', vol: 0.08, slide: 900, delay: i * 0.2 });
+            arp([523, 659, 784, 1047, 1319], 0.06, { type: 'triangle', vol: 0.1, dur: 0.25, delay: 0.62 });
+        },
+        // L'Hydre : rugissement grave
+        boss() {
+            tone(55, 1.4, { type: 'sawtooth', vol: 0.22, slide: 40, attack: 0.1 });
+            tone(82, 1.2, { type: 'sawtooth', vol: 0.12, slide: 50, attack: 0.1 });
+            noise(1.2, { filter: 'lowpass', freq: 700, sweep: 120, vol: 0.35, attack: 0.08 });
+        },
+        quest() {
+            arp([784, 988, 1175, 1568], 0.08, { type: 'square', vol: 0.08, dur: 0.2 });
+            tone(2093, 0.5, { type: 'sine', vol: 0.1, delay: 0.34 });
         },
         powerEnd() {
             arp([660, 440], 0.1, { type: 'triangle', vol: 0.1, dur: 0.18 });
@@ -231,44 +289,73 @@
     };
 
     // ---------- Musiques ----------
-    const music = {
-        scene: null,           // 'menu' | 'game' | null
-        server: { menu: null, game: null },   // manifeste renvoyé par le serveur
-        base: '',
-        tracks: {
-            menu: { el: null, src: null, info: null, fade: 0, target: 0 },
-            game: { el: null, src: null, info: null, fade: 0, target: 0 }
-        }
+    // Lecture en Web Audio (AudioBuffer en boucle) : contrairement à <audio loop>,
+    // la boucle est parfaitement continue, sans blanc entre deux tours.
+    const DEFAULTS = {          // musiques fournies avec le jeu (par michben)
+        menu: { src: 'music/intro.mp3', name: 'snake.mp3 (par défaut)' },
+        game: { src: 'music/game.mp3', name: 'snake 1.mp3 (par défaut)' },
+        game2: null
     };
+    const music = {
+        scene: null,           // 'menu' | 'game' | 'game2' | null
+        server: { menu: null, game: null, game2: null },   // manifeste renvoyé par le serveur
+        base: '',
+        bus: null,
+        buffers: new Map(),    // src -> Promise<AudioBuffer> (décodage partagé)
+        tracks: {}
+    };
+    for (const slot of SLOTS) music.tracks[slot] = { src: null, info: null, buffer: null, loading: null, source: null, gain: null, target: 0 };
 
-    // Source effective d'une piste : celle de l'appareil d'abord, sinon celle du serveur
+    function applyMusicVolume() {
+        if (music.bus) music.bus.gain.setTargetAtTime(settings.muted ? 0 : settings.music, ctx.currentTime, 0.05);
+    }
+
+    // Repère le début et la fin réels du son (les MP3 ont un peu de silence aux bords)
+    function loopBounds(buf) {
+        const d = buf.getChannelData(0), th = 0.0008, max = Math.floor(buf.sampleRate * 0.6);
+        let a = 0, b = d.length - 1;
+        while (a < max && Math.abs(d[a]) < th) a++;
+        while (b > d.length - max && Math.abs(d[b]) < th) b--;
+        return { start: a / buf.sampleRate, end: (b + 1) / buf.sampleRate };
+    }
+
+    function loadBuffer(src) {
+        if (!music.buffers.has(src)) {
+            const p = fetch(src)
+                .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+                .then((ab) => new Promise((res, rej) => ctx.decodeAudioData(ab, res, rej)))
+                .catch((e) => { music.buffers.delete(src); throw e; });
+            music.buffers.set(src, p);
+        }
+        return music.buffers.get(src);
+    }
+
+    function stopTrack(t) {
+        if (t.source) { try { t.source.stop(); } catch (e) { /* déjà arrêtée */ } t.source.disconnect(); t.source = null; }
+    }
+
+    // Source effective d'une piste : appareil, sinon serveur, sinon musique fournie avec le jeu
     async function resolveTrack(slot) {
         const t = music.tracks[slot];
         const rec = await local.get(slot);
         let src = null, info = null;
         if (rec && rec.blob) {
-            if (t.objectUrl) URL.revokeObjectURL(t.objectUrl);
-            t.objectUrl = URL.createObjectURL(rec.blob);
+            if (t.objectUrl && t.src !== t.objectUrl) URL.revokeObjectURL(t.objectUrl);
+            if (!t.objectBlob || t.objectBlob !== rec.blob) { t.objectUrl = URL.createObjectURL(rec.blob); t.objectBlob = rec.blob; }
             src = t.objectUrl;
             info = { name: rec.name, source: 'device', size: rec.blob.size };
         } else if (music.server[slot]) {
             const m = music.server[slot];
             src = `${music.base}music/${slot}?v=${m.v}`;
             info = { name: m.name, source: 'server', size: m.size };
+        } else if (DEFAULTS[slot]) {
+            src = DEFAULTS[slot].src;
+            info = { name: DEFAULTS[slot].name, source: 'default' };
         }
         t.info = info;
         if (src === t.src) return;
-        t.src = src;
-        if (t.el) { t.el.pause(); t.el.removeAttribute('src'); t.el.load(); t.el = null; }
-        if (src) {
-            const el = new root.Audio();
-            el.loop = true;
-            el.preload = 'auto';
-            el.src = src;
-            el.volume = 0;
-            t.el = el;
-            t.fade = 0;
-        }
+        stopTrack(t);
+        t.src = src; t.buffer = null; t.loading = null;
         updateScene();
     }
 
@@ -277,26 +364,55 @@
         if (API.onTracksChanged) API.onTracksChanged();
     }
 
-    // Fondu enchaîné entre la musique de présentation et celle de la partie
+    // Fondu enchaîné entre les musiques. Sans piste dédiée, le niveau 2 reprend celle du niveau 1.
     function updateScene() {
-        for (const slot of SLOTS) music.tracks[slot].target = music.scene === slot ? 1 : 0;
+        let scene = music.scene;
+        if (scene === 'game2' && !music.tracks.game2.src) scene = 'game';
+        for (const slot of SLOTS) music.tracks[slot].target = scene === slot ? 1 : 0;
+        reconcile();
     }
-    setInterval(() => {
+
+    function reconcile() {
+        if (!ctx || ctx.state !== 'running') return;
+        if (!music.bus) {
+            music.bus = ctx.createGain();
+            music.bus.connect(ctx.destination);
+            music.bus.gain.value = settings.muted ? 0 : settings.music;
+        }
         for (const slot of SLOTS) {
             const t = music.tracks[slot];
-            if (!t.el) continue;
-            const step = 0.06;
-            t.fade += Math.sign(t.target - t.fade) * Math.min(step, Math.abs(t.target - t.fade));
-            if (t.fade > 0 && t.el.paused && ctx && ctx.state === 'running') {
-                t.el.play().catch(() => { /* lecture bloquée tant qu'il n'y a pas d'interaction */ });
+            if (!t.gain) { t.gain = ctx.createGain(); t.gain.gain.value = 0; t.gain.connect(music.bus); }
+            const want = t.target === 1 && t.src;
+            t.gain.gain.setTargetAtTime(want ? 1 : 0, ctx.currentTime, want ? 0.35 : 0.5);
+            if (want && !t.buffer && !t.loading) {
+                const src = t.src;
+                t.loading = loadBuffer(src).then((buf) => {
+                    if (t.src !== src) return;
+                    t.buffer = buf; t.bounds = loopBounds(buf); t.loading = null;
+                    reconcile();
+                }).catch(() => { t.loading = null; });
             }
-            if (t.fade <= 0 && !t.el.paused) {
-                t.el.pause();
-                if (t.target === 0 && slot === 'game') t.el.currentTime = 0;   // la musique de partie repart du début
+            if (want && t.buffer && !t.source) {
+                const node = ctx.createBufferSource();
+                node.buffer = t.buffer;
+                node.loop = true;
+                node.loopStart = t.bounds.start;
+                node.loopEnd = t.bounds.end;
+                node.connect(t.gain);
+                node.start(0, t.bounds.start);
+                t.source = node;
+                clearTimeout(t.stopTimer);
             }
-            t.el.volume = settings.muted ? 0 : Math.max(0, Math.min(1, settings.music * t.fade));
+            if (!want && t.source && !t.stopTimer) {
+                // Arrêt après le fondu : la musique de partie repartira du début
+                t.stopTimer = setTimeout(() => {
+                    t.stopTimer = null;
+                    if (t.target === 0) stopTrack(t);
+                }, 2200);
+            }
+            if (want) { clearTimeout(t.stopTimer); t.stopTimer = null; }
         }
-    }, 50);
+    }
 
     const API = {
         SLOTS,
@@ -306,7 +422,9 @@
         // À appeler sur la première interaction : les navigateurs bloquent le son avant
         unlock() {
             const c = ensureCtx();
-            if (c && c.state === 'suspended') c.resume();
+            if (!c) return;
+            if (c.state === 'suspended') c.resume().then(reconcile).catch(() => {});
+            else reconcile();
         },
 
         play(name, arg) {
@@ -340,7 +458,8 @@
 
         // Manifeste des musiques du serveur : { menu: { name, size, v } | null, game: … }
         setServerTracks(manifest, base) {
-            music.server = { menu: (manifest && manifest.menu) || null, game: (manifest && manifest.game) || null };
+            music.server = {};
+            for (const slot of SLOTS) music.server[slot] = (manifest && manifest[slot]) || null;
             if (base !== undefined) music.base = base;
             return refreshTracks();
         },
@@ -356,7 +475,7 @@
         // Écoute rapide depuis la console admin
         preview(slot) {
             const t = music.tracks[slot];
-            if (!t.el) return false;
+            if (!t.src) return false;
             this.unlock();
             this.setScene(slot);
             return true;

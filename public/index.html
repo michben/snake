@@ -18,6 +18,7 @@
     <div id="menu" class="screen">
         <div class="card">
             <div class="card-tools">
+                <button class="icon-btn" id="hallBtn" title="Tableau des records">🏆</button>
                 <button class="icon-btn sound-toggle" title="Couper / remettre le son (M)">🔊</button>
                 <button class="icon-btn" id="adminBtn" title="Son &amp; console admin">⚙️</button>
             </div>
@@ -26,11 +27,20 @@
 
             <div class="status-pill"><span class="dot wait" id="netDot"></span><span id="netStatus">Connexion au serveur…</span></div>
 
+            <div class="account-bar">
+                <span class="acc-avatar" id="accAvatar">👤</span>
+                <span class="acc-text" id="accText">Invité · tes records restent sur cet appareil</span>
+                <button class="btn btn-small" id="accountBtn">Se connecter</button>
+            </div>
+
             <input type="text" id="playerName" placeholder="Votre pseudo..." maxlength="14" autocomplete="off">
 
             <div class="section-label"><span>Skin</span><span id="skinCount"></span></div>
             <div class="skin-selector" id="skinSelector"></div>
             <div class="skin-name" id="skinName"></div>
+
+            <div class="section-label"><span>Niveau</span></div>
+            <div class="level-picker" id="levelPicker"></div>
 
             <button class="btn btn-play" id="playBtn">Jouer en ligne</button>
             <button class="btn btn-secondary" id="offlineBtn">🤖 Jouer hors-ligne contre les bots</button>
@@ -43,6 +53,15 @@
                 <p class="tower-goal" id="towerGoal">Objectif : Atteindre un score de 500</p>
                 <div class="progress-bar"><div class="progress-fill" id="towerProgress"></div></div>
                 <p class="tower-reward" id="towerReward"></p>
+            </div>
+
+            <div class="tower-box quest-box">
+                <div class="tower-title">
+                    <span>📅 Quêtes du jour</span>
+                    <span id="questStreak"></span>
+                </div>
+                <div id="questList"></div>
+                <p class="tower-reward" id="questReward"></p>
             </div>
 
             <div class="records">
@@ -68,7 +87,9 @@
                 <div class="stat"><span>Survie</span><b id="dTime">0s</b></div>
             </div>
             <div class="new-record hidden" id="dRecord">🏆 Nouveau record !</div>
+            <p class="help" id="dAccount"></p>
             <div class="btn-row">
+                <button class="btn btn-secondary" id="deathHallBtn">🏆</button>
                 <button class="btn btn-secondary" id="menuBtn">Menu</button>
                 <button class="btn btn-play" id="replayBtn">Rejouer</button>
             </div>
@@ -93,33 +114,43 @@
             <div class="admin-section">
                 <div class="section-label"><span>🎵 Musiques du jeu</span><span id="adminTarget"></span></div>
                 <div id="adminLogin" class="admin-login hidden">
-                    <p>Le serveur est connecté : entrez le mot de passe admin pour que vos musiques soient jouées chez <b>tous les joueurs</b>.</p>
-                    <div class="login-row">
-                        <input type="password" id="adminPass" placeholder="Mot de passe admin" autocomplete="current-password">
-                        <button class="btn btn-small" id="adminLoginBtn">Connexion</button>
-                    </div>
-                    <p class="admin-msg" id="adminLoginMsg"></p>
+                    <p>🔒 La gestion des musiques est réservée à l'administrateur du jeu. Connectez-vous avec le compte admin pour changer les musiques de <b>tous les joueurs</b>.</p>
+                    <button class="btn btn-small" id="adminLoginBtn">👤 Se connecter</button>
                 </div>
+                <div id="adminTracks">
                 <div class="track-card" data-slot="menu">
                     <div class="track-title">🎬 Musique de présentation <small>menu &amp; écran de fin</small></div>
                     <div class="track-info"></div>
                     <div class="track-actions">
-                        <label class="btn btn-small">📁 Choisir un fichier<input type="file" accept="audio/*" hidden></label>
+                        <button class="btn btn-small" data-act="pick">📁 Importer un fichier</button>
+                        <input type="file" class="file-input" accept="audio/*,.mp3,.ogg,.oga,.opus,.wav,.m4a,.aac,.flac,.webm">
                         <button class="btn btn-small btn-ghost" data-act="play">▶️ Écouter</button>
                         <button class="btn btn-small btn-ghost" data-act="delete">🗑️</button>
                     </div>
                 </div>
                 <div class="track-card" data-slot="game">
-                    <div class="track-title">🎮 Musique en partie <small>pendant le jeu</small></div>
+                    <div class="track-title">🌌 Musique niveau 1 <small>Arène Néon</small></div>
                     <div class="track-info"></div>
                     <div class="track-actions">
-                        <label class="btn btn-small">📁 Choisir un fichier<input type="file" accept="audio/*" hidden></label>
+                        <button class="btn btn-small" data-act="pick">📁 Importer un fichier</button>
+                        <input type="file" class="file-input" accept="audio/*,.mp3,.ogg,.oga,.opus,.wav,.m4a,.aac,.flac,.webm">
+                        <button class="btn btn-small btn-ghost" data-act="play">▶️ Écouter</button>
+                        <button class="btn btn-small btn-ghost" data-act="delete">🗑️</button>
+                    </div>
+                </div>
+                <div class="track-card" data-slot="game2">
+                    <div class="track-title">🌋 Musique niveau 2 <small>Cratère Volcan · sinon celle du niveau 1</small></div>
+                    <div class="track-info"></div>
+                    <div class="track-actions">
+                        <button class="btn btn-small" data-act="pick">📁 Importer un fichier</button>
+                        <input type="file" class="file-input" accept="audio/*,.mp3,.ogg,.oga,.opus,.wav,.m4a,.aac,.flac,.webm">
                         <button class="btn btn-small btn-ghost" data-act="play">▶️ Écouter</button>
                         <button class="btn btn-small btn-ghost" data-act="delete">🗑️</button>
                     </div>
                 </div>
                 <p class="admin-msg" id="adminMsg"></p>
-                <p class="help">Formats : MP3, OGG, WAV, M4A… (20 Mo max). Les musiques tournent en boucle avec un fondu entre le menu et la partie.</p>
+                <p class="help">Formats : MP3, OGG, WAV, M4A… (20 Mo max) — bouton « Importer » ou glisser-déposer le fichier sur la carte. Les musiques tournent en boucle sans coupure, avec un fondu entre le menu et la partie.</p>
+                </div>
             </div>
 
             <div class="admin-section">
@@ -130,27 +161,95 @@
         </div>
     </div>
 
+    <!-- Compte joueur -->
+    <div id="authScreen" class="screen hidden">
+        <div class="card admin-card auth-card">
+            <div class="admin-head">
+                <h2>👤 Mon compte</h2>
+                <button class="icon-btn" id="authClose" title="Fermer">✕</button>
+            </div>
+            <div id="authForms">
+                <div class="tabs">
+                    <button class="tab active" data-tab="login">Connexion</button>
+                    <button class="tab" data-tab="register">Inscription</button>
+                </div>
+                <form id="authForm" autocomplete="on">
+                    <input type="email" id="authEmail" placeholder="Adresse e-mail" autocomplete="email" required>
+                    <input type="text" id="authPseudo" class="hidden" placeholder="Pseudo (2 à 14 caractères)" maxlength="14" autocomplete="nickname">
+                    <input type="password" id="authPass" placeholder="Mot de passe (6 caractères minimum)" autocomplete="current-password" required>
+                    <button class="btn btn-play" type="submit" id="authSubmit">Se connecter</button>
+                </form>
+                <div id="socialBox" class="social hidden">
+                    <div class="or"><span>ou</span></div>
+                    <a class="btn btn-social btn-x" id="loginX" href="auth/x">𝕏&nbsp; Continuer avec X</a>
+                    <a class="btn btn-social btn-fb" id="loginFb" href="auth/facebook"><b>f</b>&nbsp; Continuer avec Facebook</a>
+                    <p class="help">📸 Ta photo de profil devient ton skin en jeu.</p>
+                </div>
+                <p class="help hidden" id="authOffline">Les comptes et le classement mondial demandent le serveur du jeu : il n'est pas joignable pour l'instant.</p>
+                <p class="admin-msg" id="authMsg"></p>
+            </div>
+            <div id="authProfile" class="hidden">
+                <div class="profile-row">
+                    <div class="prof-avatar" id="profAvatar">🐍</div>
+                    <div><b id="profName"></b><small id="profSub"></small></div>
+                </div>
+                <div class="records">
+                    <div>Record<b id="profBest">0</b></div>
+                    <div>Éliminations<b id="profKills">0</b></div>
+                    <div>Parties<b id="profGames">0</b></div>
+                </div>
+                <button class="btn btn-secondary" id="logoutBtn">Se déconnecter</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tableau des records -->
+    <div id="hallScreen" class="screen hidden">
+        <div class="card admin-card hall-card">
+            <div class="admin-head">
+                <h2>🏆 Tableau des records</h2>
+                <button class="icon-btn" id="hallClose" title="Fermer">✕</button>
+            </div>
+            <div class="tabs">
+                <button class="tab active" data-hall="world">🌍 Mondial</button>
+                <button class="tab" data-hall="me">📱 Mes parties</button>
+            </div>
+            <div id="hallList" class="hall-list"></div>
+            <p class="help" id="hallNote"></p>
+        </div>
+    </div>
+
     <!-- HUD en jeu -->
     <div id="hud" class="hidden">
-        <div id="leaderboard" class="panel">
+        <!-- Panneaux réductibles : le bouton ▾ / ▸ les replie en une pastille -->
+        <div id="leaderboard" class="panel collapsible" data-pill="🏆">
+            <button class="hud-btn collapse-btn" title="Réduire / agrandir"></button>
             <h3><span>🏆 Classement</span><small id="playerCount"></small></h3>
             <div id="lbList"></div>
         </div>
-        <div id="missionHud" class="panel">
-            <div class="mh-title" id="mhTitle">🗼 Étage 1</div>
-            <div class="mh-goal" id="mhGoal"></div>
-            <div class="progress-bar"><div class="progress-fill" id="mhProgress"></div></div>
-            <div class="mh-val" id="mhVal"></div>
+        <div id="hudLeft">
+            <div id="missionHud" class="panel collapsible" data-pill="🗼">
+                <button class="hud-btn collapse-btn" title="Réduire / agrandir"></button>
+                <div class="mh-title" id="mhTitle">🗼 Étage 1</div>
+                <div class="mh-goal" id="mhGoal"></div>
+                <div class="progress-bar"><div class="progress-fill" id="mhProgress"></div></div>
+                <div class="mh-val" id="mhVal"></div>
+            </div>
+            <div id="powerHud"></div>
         </div>
-        <div id="stats" class="panel">
+        <div id="stats" class="panel collapsible" data-pill="📊">
+            <button class="hud-btn collapse-btn" title="Réduire / agrandir"></button>
             <div>Score<b id="currentScore">100</b></div>
             <div>Kills<b id="currentKills">0</b></div>
             <div>Rang<b id="currentRank">-</b></div>
         </div>
         <div id="netInfo"></div>
-        <div id="powerHud"></div>
-        <button class="icon-btn sound-toggle" id="hudSound" title="Couper / remettre le son (M)">🔊</button>
-        <canvas id="minimap" class="panel"></canvas>
+        <div id="eventBanner" class="hidden"></div>
+        <button class="icon-btn sound-toggle hud-btn" id="hudSound" title="Couper / remettre le son (M)">🔊</button>
+        <div id="minimapWrap" class="panel collapsible" data-pill="🗺️">
+            <button class="hud-btn collapse-btn" title="Réduire / agrandir"></button>
+            <canvas id="minimap"></canvas>
+        </div>
     </div>
 
     <!-- Contrôles mobiles -->
@@ -166,7 +265,9 @@
 
     <script src="js/core.js"></script>
     <script src="js/tower.js"></script>
+    <script src="js/quests.js"></script>
     <script src="js/audio.js"></script>
+    <script src="js/fx.js"></script>
     <script>
         // Le client Socket.io n'existe que si le serveur Node tourne : en statique / hors-ligne, on s'en passe.
         window.__ioLoaded = new Promise(function (resolve) {
@@ -177,6 +278,7 @@
             document.head.appendChild(s);
         });
     </script>
+    <script src="js/account.js"></script>
     <script src="js/client.js"></script>
     <script src="js/admin.js"></script>
 </body>
