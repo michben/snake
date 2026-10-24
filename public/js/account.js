@@ -29,7 +29,9 @@
         // Droits admin : compte serveur admin, ou (version web) visiteur claude.ai sospchs@gmail.com
         isAdmin() {
             if (this.online()) return !!(this.user && this.user.admin);
-            return !!(this.viewer && this.viewer.email && this.viewer.email.toLowerCase() === ADMIN_EMAIL);
+            // Version web : l'adresse n'est pas toujours fournie, le propriétaire de la page (michben) fait foi
+            const v = this.viewer;
+            return !!v && (v.email ? v.email.toLowerCase() === ADMIN_EMAIL : v.owner);
         },
 
         displayName() {
@@ -109,7 +111,7 @@
             if (!user) return;
             const me = await user.me();
             const hasPhoto = !!me.avatarUrl && !/^data:/.test(me.avatarUrl);
-            A.viewer = { name: me.name || '', email: me.email || null, avatarUrl: me.avatarUrl, photo: hasPhoto };
+            A.viewer = { name: me.name || '', email: me.email || null, owner: !!me.isOwner, avatarUrl: me.avatarUrl, photo: hasPhoto };
             A.emit();
         }).catch(() => { /* pas d'identité */ });
     }
