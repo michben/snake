@@ -1,0 +1,201 @@
+/*
+ * Mich Snake — console admin : volumes, test des bruitages et gestion des
+ * deux musiques (présentation / en partie).
+ *
+ * Serveur connecté : les fichiers sont envoyés au serveur (mot de passe admin)
+ * et joués chez tous les joueurs. Sans serveur : ils restent sur cet appareil.
+ */
+(function (root) {
+    'use strict';
+
+    const Sound = root.SnakeAudio;
+    const $ = (id) => document.getElementById(id);
+    const MAX_BYTES = 20 * 1024 * 1024;
+
+    const SFX_LIST = [
+        ['eat', '🍬 Manger'], ['boost', '💨 Boost'], ['kill', '⚔️ Élimination'], ['gameover', '💀 Game over'],
+        ['chest', '🎁 Coffre'], ['power:magnet', '🧲 Aimant'], ['power:speed', '⚡ Turbo'], ['power:shield', '🛡️ Bouclier'],
+        ['power:double', '💎 Score x2'], ['powerEnd', '⏳ Fin de bonus'], ['levelup', '🗼 Étage réussi'], ['start', '🚀 Départ']
+    ];
+
+    let adminKey = sessionStorageGet('snake_admin_key');
+    let previewing = null;
+
+    function sessionStorageGet(k) { try { return sessionStorage.getItem(k) || ''; } catch (e) { return ''; } }
+    function sessionStorageSet(k, v) { try { if (v) sessionStorage.setItem(k, v); else sessionStorage.removeItem(k); } catch (e) { /* indisponible */ } }
+
+    const online = () => !!(root.SnakeNet && root.SnakeNet.connected);
+
+    function msg(text, isErr) {
+        const el = $('adminMsg');
+        el.textContent = text || '';
+        el.classList.toggle('err', !!isErr);
+    }
+
+    function fmtSize(n) {
+        if (!n) return '';
+        return n > 1048576 ? (n / 1048576).toFixed(1) + ' Mo' : Math.round(n / 1024) + ' Ko';
+    }
+
+    function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    function refresh() {
+        const st = Sound.settings;
+        $('volMusic').value = Math.round(st.music * 100);
+        $('volSfx').value = Math.round(st.sfx * 100);
+        $('volMusicVal').textContent = Math.round(st.music * 100) + '%';
+        $('volSfxVal').textContent = Math.round(st.sfx * 100) + '%';
+        $('muteBox').checked = st.muted;
+
+        const srv = online();
+        $('adminTarget').textContent = srv ? (adminKey ? '🌐 Serveur · admin connecté' : '🌐 Serveur') : '📱 Cet appareil';
+        $('adminLogin').classList.toggle('hidden', !srv || !!adminKey);
+
+        document.querySelectorAll('.track-card').forEach((card) => {
+            const slot = card.dataset.slot;
+            const info = Sound.trackInfo(slot);
+            const where = info && info.source === 'device' ? '📱 sur cet appareil' : '🌐 sur le serveur';
+            card.querySelector('.track-info').innerHTML = info
+                ? `<b>${escapeHtml(info.name || 'piste')}</b> · ${fmtSize(info.size)} · ${where}`
+                : 'Aucune musique — ajoutez votre fichier';
+            const locked = srv && !adminKey;
+            card.querySelector('label.btn').style.opacity = locked ? 0.45 : 1;
+            card.querySelector('input[type=file]').disabled = locked;
+            card.querySelector('[data-act=play]').textContent = previewing === slot ? '⏸️ Stop' : '▶️ Écouter';
+            card.querySelector('[data-act=play]').disabled = !info;
+            card.querySelector('[data-act=delete]').disabled = !info || (locked && info.source === 'server');
+        });
+    }
+
+    async function api(method, path, body, headers = {}) {
+        const res = await fetch(path, { method, body, headers: Object.assign({ 'X-Admin-Key': adminKey }, headers) });
+        let data = null;
+        try { data = await res.json(); } catch (e) { /* réponse vide */ }
+        if (!res.ok) throw Object.assign(new Error((data && data.error) || `Erreur ${res.status}`), { status: res.status });
+        return data;
+    }
+
+    async function login() {
+        const pass = $('adminPass').value;
+        const out = $('adminLoginMsg');
+        if (!pass) return;
+        try {
+            adminKey = pass;
+            await api('POST', 'api/admin/check');
+            sessionStorageSet('snake_admin_key', pass);
+            $('adminPass').value = '';
+            out.textContent = '';
+            msg('✅ Connecté en admin');
+        } catch (e) {
+            adminKey = '';
+            out.textContent = e.status === 401 ? '❌ Mot de passe incorrect' : '❌ ' + e.message;
+            out.classList.add('err');
+        }
+        refresh();
+    }
+
+    async function upload(slot, file) {
+        if (!file) return;
+        if (!/^audio\//.test(file.type) && !/\.(mp3|ogg|oga|opus|wav|m4a|aac|flac|webm)$/i.test(file.name)) {
+            return msg('❌ Ce fichier n\'est pas un fichier audio', true);
+        }
+        if (file.size > MAX_BYTES) return msg('❌ Fichier trop lourd (20 Mo max)', true);
+        try {
+            if (online()) {
+                msg('⏳ Envoi au serveur…');
+                const manifest = await api('PUT', `api/admin/music/${slot}?name=${encodeURIComponent(file.name)}`, file,
+                    { 'Content-Type': file.type || 'application/octet-stream' });
+                await Sound.setServerTracks(manifest, '');
+                msg('✅ Musique enregistrée sur le serveur — tous les joueurs l\'entendent');
+            } else {
+                await Sound.setLocalTrack(slot, file);
+                msg('✅ Musique enregistrée sur cet appareil');
+            }
+        } catch (e) {
+            if (e.status === 401) { adminKey = ''; sessionStorageSet('snake_admin_key', ''); }
+            msg('❌ ' + e.message, true);
+        }
+        refresh();
+    }
+
+    async function remove(slot) {
+        const info = Sound.trackInfo(slot);
+        if (!info) return;
+        try {
+            if (info.source === 'device') {
+                await Sound.setLocalTrack(slot, null);
+            } else {
+                const manifest = await api('DELETE', `api/admin/music/${slot}`);
+                await Sound.setServerTracks(manifest, '');
+            }
+            msg('🗑️ Musique retirée');
+        } catch (e) {
+            msg('❌ ' + e.message, true);
+        }
+        refresh();
+    }
+
+    function togglePreview(slot) {
+        if (previewing === slot) { previewing = null; Sound.setScene('menu'); }
+        else if (Sound.preview(slot)) previewing = slot;
+        refresh();
+    }
+
+    function buildSfxGrid() {
+        const grid = $('sfxGrid');
+        for (const [id, label] of SFX_LIST) {
+            const b = document.createElement('button');
+            b.className = 'btn btn-small btn-ghost';
+            b.textContent = label;
+            b.addEventListener('click', () => {
+                Sound.unlock();
+                const [name, arg] = id.split(':');
+                Sound.play(name, arg);
+            });
+            grid.appendChild(b);
+        }
+    }
+
+    function open() {
+        Sound.unlock();
+        $('adminScreen').classList.remove('hidden');
+        msg('');
+        refresh();
+    }
+
+    function close() {
+        $('adminScreen').classList.add('hidden');
+        if (previewing) { previewing = null; Sound.setScene('menu'); }
+        if (location.hash === '#admin') history.replaceState(null, '', location.pathname + location.search);
+    }
+
+    // ---------- Branchements ----------
+    $('adminClose').addEventListener('click', close);
+    $('adminScreen').addEventListener('click', (e) => { if (e.target === $('adminScreen')) close(); });
+    $('volMusic').addEventListener('input', (e) => { Sound.setVolume('music', e.target.value / 100); refresh(); });
+    $('volSfx').addEventListener('input', (e) => { Sound.setVolume('sfx', e.target.value / 100); refresh(); });
+    $('volSfx').addEventListener('change', () => Sound.play('eat'));
+    $('muteBox').addEventListener('change', (e) => {
+        Sound.setMuted(e.target.checked);
+        if (root.SnakeSoundUI) root.SnakeSoundUI.refresh();
+        refresh();
+    });
+    $('adminLoginBtn').addEventListener('click', login);
+    $('adminPass').addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
+
+    document.querySelectorAll('.track-card').forEach((card) => {
+        const slot = card.dataset.slot;
+        const input = card.querySelector('input[type=file]');
+        input.addEventListener('change', () => { upload(slot, input.files[0]); input.value = ''; });
+        card.querySelector('[data-act=play]').addEventListener('click', () => togglePreview(slot));
+        card.querySelector('[data-act=delete]').addEventListener('click', () => remove(slot));
+    });
+
+    buildSfxGrid();
+    Sound.onTracksChanged = refresh;
+    root.SnakeAdmin = { open, close, refresh };
+
+    if (location.hash === '#admin') open();
+})(window);

@@ -17,6 +17,10 @@
     <!-- Menu principal -->
     <div id="menu" class="screen">
         <div class="card">
+            <div class="card-tools">
+                <button class="icon-btn sound-toggle" title="Couper / remettre le son (M)">🔊</button>
+                <button class="icon-btn" id="adminBtn" title="Son &amp; console admin">⚙️</button>
+            </div>
             <h1>Mich Snake</h1>
             <p class="subtitle">Mangez, grandissez et dominez l'arène !</p>
 
@@ -71,6 +75,61 @@
         </div>
     </div>
 
+    <!-- Son & console admin -->
+    <div id="adminScreen" class="screen hidden">
+        <div class="card admin-card">
+            <div class="admin-head">
+                <h2>⚙️ Son &amp; console admin</h2>
+                <button class="icon-btn" id="adminClose" title="Fermer">✕</button>
+            </div>
+
+            <div class="admin-section">
+                <div class="section-label"><span>🔊 Volumes</span></div>
+                <label class="slider-row"><span>Musique</span><input type="range" id="volMusic" min="0" max="100"><b id="volMusicVal"></b></label>
+                <label class="slider-row"><span>Bruitages</span><input type="range" id="volSfx" min="0" max="100"><b id="volSfxVal"></b></label>
+                <label class="check-row"><input type="checkbox" id="muteBox"> Couper tout le son</label>
+            </div>
+
+            <div class="admin-section">
+                <div class="section-label"><span>🎵 Musiques du jeu</span><span id="adminTarget"></span></div>
+                <div id="adminLogin" class="admin-login hidden">
+                    <p>Le serveur est connecté : entrez le mot de passe admin pour que vos musiques soient jouées chez <b>tous les joueurs</b>.</p>
+                    <div class="login-row">
+                        <input type="password" id="adminPass" placeholder="Mot de passe admin" autocomplete="current-password">
+                        <button class="btn btn-small" id="adminLoginBtn">Connexion</button>
+                    </div>
+                    <p class="admin-msg" id="adminLoginMsg"></p>
+                </div>
+                <div class="track-card" data-slot="menu">
+                    <div class="track-title">🎬 Musique de présentation <small>menu &amp; écran de fin</small></div>
+                    <div class="track-info"></div>
+                    <div class="track-actions">
+                        <label class="btn btn-small">📁 Choisir un fichier<input type="file" accept="audio/*" hidden></label>
+                        <button class="btn btn-small btn-ghost" data-act="play">▶️ Écouter</button>
+                        <button class="btn btn-small btn-ghost" data-act="delete">🗑️</button>
+                    </div>
+                </div>
+                <div class="track-card" data-slot="game">
+                    <div class="track-title">🎮 Musique en partie <small>pendant le jeu</small></div>
+                    <div class="track-info"></div>
+                    <div class="track-actions">
+                        <label class="btn btn-small">📁 Choisir un fichier<input type="file" accept="audio/*" hidden></label>
+                        <button class="btn btn-small btn-ghost" data-act="play">▶️ Écouter</button>
+                        <button class="btn btn-small btn-ghost" data-act="delete">🗑️</button>
+                    </div>
+                </div>
+                <p class="admin-msg" id="adminMsg"></p>
+                <p class="help">Formats : MP3, OGG, WAV, M4A… (20 Mo max). Les musiques tournent en boucle avec un fondu entre le menu et la partie.</p>
+            </div>
+
+            <div class="admin-section">
+                <div class="section-label"><span>💥 Bruitages (tester)</span></div>
+                <div class="sfx-grid" id="sfxGrid"></div>
+            </div>
+            <div class="footer">Mich Snake · by michben</div>
+        </div>
+    </div>
+
     <!-- HUD en jeu -->
     <div id="hud" class="hidden">
         <div id="leaderboard" class="panel">
@@ -89,6 +148,8 @@
             <div>Rang<b id="currentRank">-</b></div>
         </div>
         <div id="netInfo"></div>
+        <div id="powerHud"></div>
+        <button class="icon-btn sound-toggle" id="hudSound" title="Couper / remettre le son (M)">🔊</button>
         <canvas id="minimap" class="panel"></canvas>
     </div>
 
@@ -105,6 +166,7 @@
 
     <script src="js/core.js"></script>
     <script src="js/tower.js"></script>
+    <script src="js/audio.js"></script>
     <script>
         // Le client Socket.io n'existe que si le serveur Node tourne : en statique / hors-ligne, on s'en passe.
         window.__ioLoaded = new Promise(function (resolve) {
@@ -116,5 +178,6 @@
         });
     </script>
     <script src="js/client.js"></script>
+    <script src="js/admin.js"></script>
 </body>
 </html>

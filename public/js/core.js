@@ -28,8 +28,22 @@
         FOOD_HARD_CAP: 1600,
         MAGNET_RANGE: 45,
         BOT_RESPAWN_TICKS: 60,
-        DENSITY_GRID: 16
+        DENSITY_GRID: 16,
+        MAX_CHESTS: 5,
+        MAX_POWERUPS: 8,
+        ITEM_SPAWN_CHANCE: 1 / 90,   // chance par tick qu'un bonus manquant réapparaisse
+        CHEST_GOLD_MIN: 150,
+        CHEST_GOLD_MAX: 400
     };
+
+    // Bonus d'amélioration : durée en secondes, rendu (icône / couleur) côté client
+    const POWERUPS = {
+        magnet: { name: 'Super-aimant', icon: '🧲', color: '#ff3df0', duration: 12 },
+        speed:  { name: 'Turbo gratuit', icon: '⚡', color: '#ffe600', duration: 8 },
+        shield: { name: 'Bouclier',      icon: '🛡️', color: '#4dd2ff', duration: 8 },
+        double: { name: 'Score x2',      icon: '💎', color: '#39ff14', duration: 15 }
+    };
+    const POWERUP_KEYS = Object.keys(POWERUPS);
 
     // Couleurs de nourriture "naturelle"
     const FOOD_COLORS = ['#ff0055', '#00ffcc', '#ffcc00', '#aa00ff', '#00ff44', '#00aaff', '#ff7a00'];
@@ -77,7 +91,11 @@
             this.events = [];          // événements du tick (morts, kills) consommés par l'hôte
             this.pendingBots = [];     // { id, name, skin, at }
             this.densityCache = null;
+            this.items = [];           // coffres et bonus d'amélioration { id, type: 'chest' | 'power', kind, x, y }
+            this.nextItemId = 1;
             for (let i = 0; i < CONFIG.MAX_FOOD; i++) this.foods.push(this.createFood());
+            for (let i = 0; i < CONFIG.MAX_CHESTS; i++) this.spawnItem('chest');
+            for (let i = 0; i < CONFIG.MAX_POWERUPS; i++) this.spawnItem('power');
             const skinKeys = Object.keys(SKINS);
             for (let i = 0; i < this.botCount; i++) {
                 const id = 'bot_' + i;
@@ -95,6 +113,44 @@
                 radius: value > 1 ? 9 : value === 1 && color ? 4 : 5,
                 color: color || FOOD_COLORS[Math.floor(Math.random() * FOOD_COLORS.length)]
             };
+        }
+
+        spawnItem(type) {
+            const m = 250;
+            this.items.push({
+                id: this.nextItemId++,
+                type,
+                kind: type === 'power' ? POWERUP_KEYS[Math.floor(Math.random() * POWERUP_KEYS.length)] : null,
+                x: Math.random() * (this.size - 2 * m) + m,
+                y: Math.random() * (this.size - 2 * m) + m
+            });
+        }
+
+        countItems(type) {
+            let n = 0;
+            for (const it of this.items) if (it.type === type) n++;
+            return n;
+        }
+
+        hasPower(s, kind) { return (s.powers[kind] || 0) > this.tick; }
+
+        grantPower(s, kind) {
+            s.powers[kind] = Math.max(s.powers[kind] || 0, this.tick) + POWERUPS[kind].duration * CONFIG.TICK_RATE;
+            this.events.push({ type: 'power', id: s.id, kind });
+        }
+
+        // Ouverture d'un coffre : trésor de points + gerbe d'orbes dorées, parfois un bonus en prime
+        openChest(s, it) {
+            let gold = CONFIG.CHEST_GOLD_MIN + Math.floor(Math.random() * (CONFIG.CHEST_GOLD_MAX - CONFIG.CHEST_GOLD_MIN));
+            if (this.hasPower(s, 'double')) gold *= 2;
+            s.score += gold;
+            for (let i = 0; i < 12 && this.foods.length < CONFIG.FOOD_HARD_CAP; i++) {
+                const a = (i / 12) * Math.PI * 2;
+                this.foods.push(this.createFood(it.x + Math.cos(a) * 45, it.y + Math.sin(a) * 45, 2, '#ffd700'));
+            }
+            const power = Math.random() < 0.4 ? POWERUP_KEYS[Math.floor(Math.random() * POWERUP_KEYS.length)] : null;
+            this.events.push({ type: 'chest', id: s.id, gold, power });
+            if (power) this.grantPower(s, power);
         }
 
         // Cherche un point d'apparition loin des autres serpents
@@ -140,6 +196,7 @@
                 segments,
                 kills: 0,
                 orbs: 0,
+                powers: {},            // bonus actifs : kind -> tick de fin
                 bornTick: this.tick,
                 ai: isBot ? { think: 0, target: null, aggression: 0.3 + Math.random() * 0.7 } : null
             };
@@ -249,6 +306,13 @@
                 const v = (f.value * frontBonus) / d;
                 if (v > bestScore) { bestScore = v; best = f; }
             }
+            for (const it of this.items) {
+                const dx = it.x - s.x, dy = it.y - s.y;
+                if (dx > 500 || dx < -500 || dy > 500 || dy < -500) continue;
+                const d = Math.hypot(dx, dy) + 20;
+                const v = ((it.type === 'chest' ? 14 : 9) * (Math.cos(angleDiff(s.angle, Math.atan2(dy, dx))) + 1.5)) / d;
+                if (v > bestScore) { bestScore = v; best = it; }
+            }
             if (best) {
                 s.targetAngle = Math.atan2(best.y - s.y, best.x - s.x);
             } else if (Math.random() < 0.3) {
@@ -281,11 +345,21 @@
                 const turnRate = CONFIG.TURN_RATE * (1 - Math.min(0.45, (s.radius - 13) / 40));
                 s.angle += angleDiff(s.angle, s.targetAngle) * turnRate;
 
-                s.boosting = s.wantBoost && s.score > CONFIG.MIN_BOOST_SCORE;
+                // Bonus expirés
+                for (const k in s.powers) {
+                    if (s.powers[k] <= this.tick) {
+                        delete s.powers[k];
+                        this.events.push({ type: 'powerEnd', id: s.id, kind: k });
+                    }
+                }
+
+                // Turbo gratuit : boost sans coût ni score minimum
+                const freeBoost = this.hasPower(s, 'speed');
+                s.boosting = s.wantBoost && (freeBoost || s.score > CONFIG.MIN_BOOST_SCORE);
                 if (s.boosting) {
                     s.speed = CONFIG.BOOST_SPEED;
-                    s.score -= CONFIG.BOOST_COST;
-                    if (this.tick % 4 === 0 && this.foods.length < CONFIG.FOOD_HARD_CAP) {
+                    if (!freeBoost) s.score -= CONFIG.BOOST_COST;
+                    if (!freeBoost && this.tick % 4 === 0 && this.foods.length < CONFIG.FOOD_HARD_CAP) {
                         const tail = s.segments[s.segments.length - 1];
                         this.foods.push(this.createFood(tail.x, tail.y, 1, SKINS[s.skin].color));
                     }
@@ -295,6 +369,15 @@
 
                 s.x += Math.cos(s.angle) * s.speed;
                 s.y += Math.sin(s.angle) * s.speed;
+
+                // Bouclier : rebond sur la bordure au lieu de mourir
+                if (this.hasPower(s, 'shield') && (s.x < 0 || s.x > this.size || s.y < 0 || s.y > this.size)) {
+                    if (s.x < 0 || s.x > this.size) s.angle = Math.PI - s.angle;
+                    if (s.y < 0 || s.y > this.size) s.angle = -s.angle;
+                    s.targetAngle = s.angle;
+                    s.x = clamp(s.x, 1, this.size - 1);
+                    s.y = clamp(s.y, 1, this.size - 1);
+                }
 
                 s.radius = radiusForScore(s.score);
                 const targetLength = lengthForScore(s.score);
@@ -323,14 +406,15 @@
             for (const id of ids) {
                 const s = this.snakes[id];
                 const eatR = s.radius + 6;
-                const magR = s.radius + CONFIG.MAGNET_RANGE;
+                const magR = s.radius + CONFIG.MAGNET_RANGE * (this.hasPower(s, 'magnet') ? 4 : 1);
+                const mult = this.hasPower(s, 'double') ? 2 : 1;
                 for (let i = this.foods.length - 1; i >= 0; i--) {
                     const f = this.foods[i];
                     const dx = s.x - f.x, dy = s.y - f.y;
                     if (dx > magR || dx < -magR || dy > magR || dy < -magR) continue;
                     const d = Math.hypot(dx, dy);
                     if (d < eatR + f.radius) {
-                        s.score += f.value * 8;
+                        s.score += f.value * 8 * mult;
                         s.orbs++;
                         this.foods[i] = this.foods[this.foods.length - 1];
                         this.foods.pop();
@@ -343,6 +427,22 @@
             }
             while (this.foods.length < CONFIG.MAX_FOOD) this.foods.push(this.createFood());
 
+            // 2 bis. Coffres et bonus d'amélioration
+            for (const id of ids) {
+                const s = this.snakes[id];
+                for (let i = this.items.length - 1; i >= 0; i--) {
+                    const it = this.items[i];
+                    const r = s.radius + (it.type === 'chest' ? 20 : 16);
+                    const dx = s.x - it.x, dy = s.y - it.y;
+                    if (dx > r || dx < -r || dy > r || dy < -r || dx * dx + dy * dy > r * r) continue;
+                    this.items.splice(i, 1);
+                    if (it.type === 'chest') this.openChest(s, it);
+                    else this.grantPower(s, it.kind);
+                }
+            }
+            if (this.countItems('chest') < CONFIG.MAX_CHESTS && Math.random() < CONFIG.ITEM_SPAWN_CHANCE) this.spawnItem('chest');
+            if (this.countItems('power') < CONFIG.MAX_POWERUPS && Math.random() < CONFIG.ITEM_SPAWN_CHANCE * 1.5) this.spawnItem('power');
+
             // 3. Collisions (murs, corps des autres)
             const deaths = [];
             for (const id of ids) {
@@ -351,6 +451,8 @@
                     deaths.push([id, null]);
                     continue;
                 }
+                // Bouclier : traverse les corps sans mourir
+                if (this.hasPower(s, 'shield')) continue;
                 for (const oid of ids) {
                     if (oid === id) continue;
                     const o = this.snakes[oid];
@@ -374,6 +476,16 @@
                 }
             }
             for (const [id, killer] of deaths) this.killSnake(id, killer);
+        }
+
+        // Secondes restantes de chaque bonus actif
+        powersLeft(s) {
+            const out = {};
+            for (const k in s.powers) {
+                const left = (s.powers[k] - this.tick) / CONFIG.TICK_RATE;
+                if (left > 0) out[k] = Math.ceil(left);
+            }
+            return out;
         }
 
         drainEvents() { const e = this.events; this.events = []; return e; }
@@ -428,7 +540,8 @@
                 }
                 snakes.push({
                     id: s.id, n: s.name, k: s.skin, a: Math.round(s.angle * 100) / 100,
-                    r: s.radius, b: s.boosting ? 1 : 0, sc: Math.floor(s.score), g: flat
+                    r: s.radius, b: s.boosting ? 1 : 0, sc: Math.floor(s.score), g: flat,
+                    p: this.hasPower(s, 'shield') ? 1 : 0
                 });
             }
 
@@ -436,6 +549,13 @@
             for (const f of this.foods) {
                 if (f.x > x0 && f.x < x1 && f.y > y0 && f.y < y1) {
                     foods.push([f.id, Math.round(f.x), Math.round(f.y), f.radius, f.color]);
+                }
+            }
+
+            const items = [];
+            for (const it of this.items) {
+                if (it.x > x0 && it.x < x1 && it.y > y0 && it.y < y1) {
+                    items.push([it.id, Math.round(it.x), Math.round(it.y), it.type === 'chest' ? 0 : 1, it.kind]);
                 }
             }
 
@@ -450,17 +570,22 @@
                 t: this.tick,
                 s: snakes,
                 f: foods,
+                it: items,
                 lb,
                 n: Object.keys(this.snakes).length,
                 me: me ? {
                     score: Math.floor(me.score), kills: me.kills, orbs: me.orbs, rank,
-                    alive: Math.floor((this.tick - me.bornTick) / CONFIG.TICK_RATE), x: me.x, y: me.y, r: me.radius
+                    alive: Math.floor((this.tick - me.bornTick) / CONFIG.TICK_RATE), x: me.x, y: me.y, r: me.radius,
+                    pw: this.powersLeft(me)
                 } : null
             };
-            if (withDensity) snap.d = this.density();
+            if (withDensity) {
+                snap.d = this.density();
+                snap.ch = this.items.filter(it => it.type === 'chest').map(it => [Math.round(it.x), Math.round(it.y)]);
+            }
             return snap;
         }
     }
 
-    return { CONFIG, SKINS, FOOD_COLORS, BOT_NAMES, World, clamp, angleDiff };
+    return { CONFIG, SKINS, POWERUPS, FOOD_COLORS, BOT_NAMES, World, clamp, angleDiff };
 });

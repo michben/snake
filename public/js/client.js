@@ -9,7 +9,9 @@
     const Core = window.SnakeCore;
     const Tower = window.Tower;
     const store = window.SnakeStore;
+    const Sound = window.SnakeAudio;
     const SKINS = Core.SKINS;
+    const POWERUPS = Core.POWERUPS;
     const TICK_MS = 1000 / Core.CONFIG.TICK_RATE;
     const INTERP_DELAY = TICK_MS * 2.5;   // on rend ~2,5 ticks dans le passé pour toujours avoir 2 snapshots
     const OFFLINE_ID = 'me';
@@ -42,6 +44,8 @@
         clockOffset: null,
         lastMe: null,
         density: null,
+        chests: [],            // positions des coffres pour la minimap
+        lastOrbs: 0,
         lb: [],
         playerCount: 0,
         angle: 0,
@@ -65,6 +69,7 @@
 
     // ---------- Réseau ----------
     const net = { socket: null, connected: false };
+    window.SnakeNet = net;
 
     function setNetStatus(kind, text) {
         $('netDot').className = 'dot ' + kind;
@@ -88,6 +93,7 @@
             clearTimeout(offlineTimer);
             net.connected = true;
             setNetStatus('on', 'Serveur connecté');
+            loadServerMusic();
         });
         socket.on('disconnect', () => {
             net.connected = false;
@@ -104,6 +110,9 @@
         socket.on('state', (snap) => { if (state.mode === 'online') receiveSnapshot(snap); });
         socket.on('died', (ev) => { if (state.mode === 'online') onDeath(ev); });
         socket.on('kill', (ev) => { if (state.mode === 'online') onKill(ev); });
+        socket.on('fx', (ev) => { if (state.mode === 'online') onFx(ev); });
+        // La console admin a changé une musique : on recharge chez tout le monde
+        socket.on('music', (manifest) => Sound.setServerTracks(manifest, ''));
 
         setInterval(() => {
             if (!net.connected) return;
@@ -111,6 +120,13 @@
             socket.timeout(2000).emit('ping_check', () => { state.ping = Math.round(performance.now() - t0); });
         }, 2000);
     });
+
+    function loadServerMusic() {
+        fetch('api/music', { cache: 'no-store' })
+            .then((r) => r.ok ? r.json() : null)
+            .then((m) => { if (m) Sound.setServerTracks(m, ''); })
+            .catch(() => { /* pas d'API musique : on garde les pistes locales */ });
+    }
 
     // ---------- Mode hors-ligne : même moteur que le serveur, dans le navigateur ----------
     const offline = { world: null, timer: null };
@@ -128,6 +144,7 @@
             w.step();
             let myDeath = null;
             for (const ev of w.drainEvents()) {
+                if (ev.type !== 'death') { if (ev.id === OFFLINE_ID) onFx(ev); continue; }
                 if (ev.id === OFFLINE_ID) myDeath = ev;
                 if (ev.killerId === OFFLINE_ID) onKill({ victim: ev.name });
             }
@@ -149,8 +166,11 @@
         state.snaps = [];
         state.clockOffset = null;
         state.lastMe = null;
+        state.lastOrbs = 0;
         state.mode = mode;
         state.playing = true;
+        Sound.unlock();
+        Sound.play('start');
         Tower.startRun(null);
 
         if (mode === 'online') {
@@ -166,6 +186,9 @@
 
     function onDeath(ev) {
         state.playing = false;
+        Sound.setBoost(false);
+        Sound.play('gameover');
+        Sound.duck('menu', 2200);
         records.games++;
         records.kills += ev.kills || 0;
         const isRecord = ev.score > records.best;
@@ -184,10 +207,33 @@
     }
 
     function onKill(ev) {
+        Sound.play('kill');
         toast(`⚔️ Vous avez éliminé ${ev.victim} !`, 'kill');
     }
 
+    // Coffres et bonus d'amélioration ramassés par mon serpent
+    let lastChestAt = 0;
+    function onFx(ev) {
+        if (ev.type === 'chest') {
+            lastChestAt = performance.now();
+            Sound.play('chest');
+            toast(`🎁 Coffre ouvert : +${ev.gold} points`, 'gold');
+        } else if (ev.type === 'power') {
+            const p = POWERUPS[ev.kind];
+            if (!p) return;
+            // Bonus sorti d'un coffre : on le joue juste après le son du coffre
+            const delay = performance.now() - lastChestAt < 200 ? 550 : 0;
+            setTimeout(() => {
+                Sound.play('power', ev.kind);
+                toast(`${p.icon} ${p.name} — ${p.duration} s`, 'power');
+            }, delay);
+        } else if (ev.type === 'powerEnd') {
+            Sound.play('powerEnd');
+        }
+    }
+
     Tower.onComplete = (floor, reward) => {
+        Sound.play('levelup');
         toast(`🗼 Étage ${floor} réussi !`, 'gold');
         if (reward) setTimeout(() => toast(`✨ Skin débloqué : ${SKINS[reward].emoji} ${SKINS[reward].name}`, 'gold'), 700);
         buildSkinSelector();
@@ -206,6 +252,15 @@
         if (state.snaps.length > 30) state.snaps.shift();
 
         if (snap.d) state.density = snap.d;
+        if (snap.ch) state.chests = snap.ch;
+        if (state.playing) {
+            const mine = snap.s.find(s => s.id === state.myId);
+            Sound.setBoost(!!(mine && mine.b));
+            if (snap.me && snap.me.orbs > state.lastOrbs) {
+                Sound.play('eat');
+                state.lastOrbs = snap.me.orbs;
+            }
+        }
         state.lb = snap.lb;
         state.playerCount = snap.n;
         if (snap.me) {
@@ -224,6 +279,18 @@
         $('currentRank').textContent = '#' + me.rank;
         updateMissionHud(p);
         updateLeaderboard();
+        updatePowerHud(me.pw);
+    }
+
+    let lastPowerHtml = '';
+    function updatePowerHud(pw) {
+        let html = '';
+        for (const k in (pw || {})) {
+            const p = POWERUPS[k];
+            if (!p) continue;
+            html += `<div class="power-chip${pw[k] <= 3 ? ' ending' : ''}" style="--c:${p.color}" title="${p.name}">${p.icon} ${pw[k]}s</div>`;
+        }
+        if (html !== lastPowerHtml) { $('powerHud').innerHTML = html; lastPowerHtml = html; }
     }
 
     function lerp(a, b, t) { return a + (b - a) * t; }
@@ -247,7 +314,8 @@
         if (renderTime < snaps[0].time) { a = b = snaps[0]; }
         const span = b.time - a.time;
         const t = span > 0 ? Core.clamp((renderTime - a.time) / span, 0, 1) : 0;
-        if (a === b) return { snakes: b.data.s, foods: b.data.f };
+        const items = b.data.it || [];
+        if (a === b) return { snakes: b.data.s, foods: b.data.f, items };
 
         if (!a.snakeMap) a.snakeMap = indexBy(a.data.s, s => s.id);
         if (!a.foodMap) a.foodMap = indexBy(a.data.f, f => f[0]);
@@ -260,7 +328,7 @@
             const g = new Array(n);
             for (let i = 0; i < n; i++) g[i] = i < na ? lerp(ga[i], gb[i], t) : gb[i];
             return {
-                id: sb.id, n: sb.n, k: sb.k, b: sb.b, sc: sb.sc,
+                id: sb.id, n: sb.n, k: sb.k, b: sb.b, sc: sb.sc, p: sb.p,
                 r: lerp(sa.r, sb.r, t),
                 a: sa.a + Core.angleDiff(sa.a, sb.a) * t,
                 g
@@ -271,7 +339,7 @@
             if (!fa || (fa[1] === fb[1] && fa[2] === fb[2])) return fb;
             return [fb[0], lerp(fa[1], fb[1], t), lerp(fa[2], fb[2], t), fb[3], fb[4]];
         });
-        return { snakes, foods };
+        return { snakes, foods, items };
     }
 
     // ---------- Entrées ----------
@@ -306,6 +374,8 @@
     canvas.addEventListener('mousedown', () => { state.boosting = true; });
     window.addEventListener('mouseup', () => { state.boosting = false; });
     window.addEventListener('keydown', (e) => {
+        if (e.target && e.target.tagName === 'INPUT') return;
+        if (e.code === 'KeyM') toggleMute();
         if (e.code === 'Space' && state.playing) { state.boosting = true; e.preventDefault(); }
         if (e.code === 'Enter' && !state.playing) {
             if (!$('menu').classList.contains('hidden')) $('playBtn').click();
@@ -367,6 +437,10 @@
 
     // ---------- UI : menu, skins, tour ----------
     function showScreen(which) {
+        $('adminScreen').classList.add('hidden');
+        // Après un game over, la musique de présentation revient d'elle-même (Sound.duck)
+        if (which !== 'death') Sound.setScene(which === 'hud' ? 'game' : 'menu');
+        if (which !== 'hud') Sound.setBoost(false);
         $('menu').classList.toggle('hidden', which !== 'menu');
         $('deathScreen').classList.toggle('hidden', which !== 'death');
         $('hud').classList.toggle('hidden', which !== 'hud');
@@ -455,6 +529,31 @@
         const m = Math.floor(s / 60), r = s % 60;
         return m ? `${m}m${String(r).padStart(2, '0')}` : `${r}s`;
     }
+
+    // ---------- Son ----------
+    // Les navigateurs n'autorisent le son qu'après une première interaction
+    const unlockAudio = () => Sound.unlock();
+    for (const ev of ['pointerdown', 'keydown', 'touchstart']) window.addEventListener(ev, unlockAudio, { capture: true, passive: true });
+
+    function refreshSoundButtons() {
+        document.querySelectorAll('.sound-toggle').forEach((b) => {
+            b.textContent = Sound.settings.muted ? '🔇' : '🔊';
+            b.classList.toggle('off', Sound.settings.muted);
+        });
+    }
+    function toggleMute() {
+        Sound.setMuted(!Sound.settings.muted);
+        refreshSoundButtons();
+        if (window.SnakeAdmin) window.SnakeAdmin.refresh();
+    }
+    document.querySelectorAll('.sound-toggle').forEach((b) => {
+        b.addEventListener('click', (e) => { e.stopPropagation(); toggleMute(); });
+        b.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+    });
+    window.SnakeSoundUI = { refresh: refreshSoundButtons };
+    refreshSoundButtons();
+
+    $('adminBtn').addEventListener('click', () => { Sound.play('click'); window.SnakeAdmin.open(); });
 
     $('playerName').value = prefs.name;
     $('playBtn').addEventListener('click', () => startGame(net.connected ? 'online' : 'offline'));
@@ -595,6 +694,16 @@
         const hs = headSize * 1.25;
         ctx.drawImage(emojiSprite(skin.emoji, headSize * scale), hx - hs / 2, hy - hs / 2, hs, hs);
 
+        if (p.p) {
+            ctx.save();
+            ctx.globalAlpha = 0.45 + Math.sin(time * 0.012) * 0.25;
+            ctx.strokeStyle = POWERUPS.shield.color;
+            ctx.lineWidth = 4;
+            ctx.shadowColor = POWERUPS.shield.color; ctx.shadowBlur = 14;
+            ctx.beginPath(); ctx.arc(hx, hy, hs / 2 + 4, 0, Math.PI * 2); ctx.stroke();
+            ctx.restore();
+        }
+
         ctx.textAlign = 'center';
         ctx.font = `bold ${13 / Math.max(0.7, state.camera.zoom)}px sans-serif`;
         ctx.fillStyle = p.id === state.myId ? '#ffcc00' : 'rgba(255,255,255,0.9)';
@@ -603,6 +712,55 @@
             ctx.font = `${20 / Math.max(0.7, state.camera.zoom)}px sans-serif`;
             ctx.fillText('👑', hx, hy - r * 1.4 - 26);
         }
+    }
+
+    function drawChest(x, y, now, id) {
+        y += Math.sin(now * 0.003 + id) * 3;
+        const spr = glowSprite('#ffd700', 18);
+        ctx.globalAlpha = 0.55 + Math.sin(now * 0.005 + id) * 0.2;
+        ctx.drawImage(spr, x - spr.width / 2, y - spr.height / 2);
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#3b1d06';
+        ctx.fillStyle = '#8b4a17';                       // caisse
+        ctx.fillRect(x - 16, y - 6, 32, 18); ctx.strokeRect(x - 16, y - 6, 32, 18);
+        ctx.fillStyle = '#a65d22';                       // couvercle
+        ctx.fillRect(x - 17, y - 15, 34, 10); ctx.strokeRect(x - 17, y - 15, 34, 10);
+        ctx.fillStyle = '#ffd700';                       // ferrures dorées
+        ctx.fillRect(x - 17, y - 6, 34, 3);
+        ctx.fillRect(x - 3, y - 15, 6, 27);
+        ctx.fillStyle = '#fff3a0';
+        ctx.fillRect(x - 2.5, y - 4, 5, 5);
+        if ((Math.floor(now / 160) + id) % 12 === 0) {   // petit éclat
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(x + 8, y - 13, 3, 3);
+        }
+    }
+
+    function drawPowerUp(x, y, kind, now, id) {
+        const p = POWERUPS[kind];
+        if (!p) return;
+        const r = 15 + Math.sin(now * 0.006 + id) * 1.5;
+        const spr = glowSprite(p.color, 14);
+        ctx.drawImage(spr, x - spr.width / 2, y - spr.height / 2);
+        ctx.beginPath();
+        ctx.fillStyle = 'rgba(10, 14, 24, 0.9)';
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(now * 0.002 + id);
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath(); ctx.arc(0, 0, r + 3, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+        ctx.font = '16px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#fff';
+        ctx.fillText(p.icon, x, y + 1);
+        ctx.textBaseline = 'alphabetic';
     }
 
     function drawMinimap(frame) {
@@ -628,6 +786,11 @@
         mctx.strokeStyle = 'rgba(255, 0, 68, 0.6)';
         mctx.lineWidth = 1.5 * state.dpr;
         mctx.strokeRect(1, 1, W - 2, H - 2);
+
+        // Coffres
+        mctx.fillStyle = '#ffd700';
+        const cs = 3 * state.dpr;
+        for (const [x, y] of state.chests) mctx.fillRect(x * sx - cs / 2, y * sy - cs / 2, cs, cs);
 
         // Champ de vision
         const cam = state.camera;
@@ -717,6 +880,22 @@
                 const pulse = 1 + Math.sin(now * 0.004 + f[0]) * 0.08;
                 const s = spr.width * pulse;
                 ctx.drawImage(spr, fx - s / 2, fy - s / 2, s, s);
+            }
+            for (const it of frame.items) {
+                const [id, ix, iy, t, kind] = it;
+                if (ix < x0 - 40 || ix > x1 + 40 || iy < y0 - 40 || iy > y1 + 40) continue;
+                if (t === 0) drawChest(ix, iy, now, id); else drawPowerUp(ix, iy, kind, now, id);
+            }
+            // Rayon du super-aimant autour de ma tête
+            if (me && state.lastMe && state.lastMe.pw && state.lastMe.pw.magnet) {
+                ctx.save();
+                ctx.globalAlpha = 0.18;
+                ctx.strokeStyle = POWERUPS.magnet.color;
+                ctx.lineWidth = 3;
+                ctx.setLineDash([10, 10]);
+                ctx.lineDashOffset = -now * 0.05;
+                ctx.beginPath(); ctx.arc(me.g[0], me.g[1], me.r + Core.CONFIG.MAGNET_RANGE * 4, 0, Math.PI * 2); ctx.stroke();
+                ctx.restore();
             }
             const leaderId = state.lb[0] && state.lb[0][0];
             // Mon serpent dessiné en dernier, par-dessus les autres

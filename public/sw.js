@@ -1,6 +1,6 @@
 /* Service Worker — Mich Snake : jeu jouable 100% hors-ligne */
-const CACHE = 'mich-snake-v2';
-const ASSETS = ['./', 'index.html', 'css/style.css', 'js/core.js', 'js/tower.js', 'js/client.js', 'manifest.webmanifest', 'icon.svg'];
+const CACHE = 'mich-snake-v3';
+const ASSETS = ['./', 'index.html', 'css/style.css', 'js/core.js', 'js/tower.js', 'js/audio.js', 'js/client.js', 'js/admin.js', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', (e) => {
     e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
@@ -16,7 +16,8 @@ self.addEventListener('activate', (e) => {
 // Le trafic Socket.io n'est jamais mis en cache.
 self.addEventListener('fetch', (e) => {
     const url = new URL(e.request.url);
-    if (e.request.method !== 'GET' || url.origin !== location.origin || url.pathname.includes('/socket.io/')) return;
+    if (e.request.method !== 'GET' || url.origin !== location.origin || url.pathname.includes('/socket.io/') ||
+        url.pathname.includes('/api/') || url.pathname.includes('/music/')) return;
     e.respondWith(
         fetch(e.request)
             .then((res) => {
