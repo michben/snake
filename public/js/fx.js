@@ -96,6 +96,20 @@
         }
         return tiles[name];
     }
+    // Volcan : roche et fissures fusionnées d'avance, en quelques niveaux d'éclat.
+    // Un seul remplissage plein écran par image au lieu de deux (le plus coûteux sur mobile).
+    const LAVA_STEPS = 6;
+    function lavaTile(step) {
+        const key = 'lava' + step;
+        if (!tiles[key]) {
+            const rock = tile('rock'), c = makeCanvas(rock.width, rock.height), g = c.getContext('2d');
+            g.drawImage(rock, 0, 0);
+            g.globalAlpha = 0.25 + 0.6 * step / (LAVA_STEPS - 1);
+            g.drawImage(tile('cracks'), 0, 0, rock.width, rock.height);
+            tiles[key] = c;
+        }
+        return tiles[key];
+    }
 
     // Motifs mis en cache par image (un seul canvas de jeu)
     const patterns = new Map();
@@ -177,12 +191,9 @@
             draw(ctx, x0, y0, x1, y1, size, now) {
                 const ax0 = Math.max(0, x0), ay0 = Math.max(0, y0), ax1 = Math.min(size, x1), ay1 = Math.min(size, y1);
                 if (ax1 <= ax0 || ay1 <= ay0) return;
-                fillPattern(ctx, tile('rock'), ax0, ay0, ax1 - ax0, ay1 - ay0, 0, 0);
                 // Fissures de lave qui « respirent »
-                ctx.save();
-                ctx.globalAlpha = 0.55 + Math.sin(now * 0.0025) * 0.3;
-                fillPattern(ctx, tile('cracks'), ax0, ay0, ax1 - ax0, ay1 - ay0, 0, 0);
-                ctx.restore();
+                const step = Math.round((0.5 + Math.sin(now * 0.0025) * 0.5) * (LAVA_STEPS - 1));
+                fillPattern(ctx, lavaTile(step), ax0, ay0, ax1 - ax0, ay1 - ay0, 0, 0);
             }
         }
     };
@@ -328,11 +339,21 @@
             gr.addColorStop(1, 'rgba(0,0,0,0.6)');
             g.fillStyle = gr; g.fillRect(0, 0, c.width, c.height);
             this.vignette = c;
+            // Volcan : la lueur de chaleur du bas de l'écran est cuite dans la vignette (un remplissage de moins)
+            const hot = makeCanvas(c.width, c.height), hg = hot.getContext('2d');
+            hg.drawImage(c, 0, 0);
+            const heat = hg.createLinearGradient(0, hot.height * 0.6, 0, hot.height);
+            heat.addColorStop(0, 'rgba(255,60,0,0)');
+            heat.addColorStop(1, 'rgba(255,60,0,0.12)');
+            hg.fillStyle = heat; hg.fillRect(0, hot.height * 0.6, hot.width, hot.height * 0.4);
+            this.vignetteHot = hot;
         },
         drawScreen(ctx, key, W, H, dt, scale) {
             if (key === 'volcan') {
                 const k = dt / 16.7;
-                while (embers.length < 50) {
+                const want = scale < 1.2 ? 30 : 50;      // moins de braises quand la qualité baisse
+                if (embers.length > want) embers.length = want;
+                while (embers.length < want) {
                     embers.push({ x: Math.random() * W, y: H + Math.random() * H * 0.5, vx: (Math.random() - 0.5) * 0.6, vy: -(0.6 + Math.random() * 1.6), s: 1 + Math.random() * 2.5, ph: Math.random() * 6 });
                 }
                 ctx.save();
@@ -345,13 +366,9 @@
                     ctx.drawImage(dot('#ff7a1a'), e.x - s, e.y - s, s * 2, s * 2);
                 }
                 ctx.restore();
-                // Lueur de chaleur en bas de l'écran
-                const gr = ctx.createLinearGradient(0, H * 0.6, 0, H);
-                gr.addColorStop(0, 'rgba(255,60,0,0)');
-                gr.addColorStop(1, 'rgba(255,60,0,0.12)');
-                ctx.fillStyle = gr; ctx.fillRect(0, H * 0.6, W, H * 0.4);
             }
-            if (this.vignette) ctx.drawImage(this.vignette, 0, 0, W, H);
+            const v = key === 'volcan' ? this.vignetteHot : this.vignette;
+            if (v) ctx.drawImage(v, 0, 0, W, H);
         },
 
         clear() { parts.length = 0; texts.length = 0; this.shakeAmt = 0; }

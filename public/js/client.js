@@ -18,7 +18,10 @@
     const POWERUPS = Core.POWERUPS;
     const LEVELS = Core.LEVELS;
     const TICK_MS = 1000 / Core.CONFIG.TICK_RATE;
-    const INTERP_DELAY = TICK_MS * 2.5;   // on rend ~2,5 ticks dans le passé pour toujours avoir 2 snapshots
+    // On rend un peu dans le passé pour toujours avoir 2 snapshots entre lesquels interpoler.
+    // Le délai s'adapte : écart entre snapshots + pire retard récent (réseau mobile, serveur qui hoquette)
+    const jitter = { gap: TICK_MS * 2, late: 0, last: 0 };
+    let interpDelay = TICK_MS * 2.5;
     const OFFLINE_ID = 'me';
 
     const $ = (id) => document.getElementById(id);
@@ -212,6 +215,7 @@
         if (prefs.level === 'volcan') Quests.track('volcan', 1);
         state.snaps = [];
         state.clockOffset = null;
+        jitter.last = 0; jitter.late = 0; state.renderDelay = 0;
         state.lastMe = null;
         state.lastOrbs = 0;
         state.mode = mode;
@@ -552,6 +556,11 @@
         if (state.clockOffset === null || Math.abs(offset - state.clockOffset) > 500) state.clockOffset = offset;
         else state.clockOffset += (offset - state.clockOffset) * (offset < state.clockOffset ? 0.2 : 0.02);
 
+        if (jitter.last && snap.t > jitter.last) jitter.gap += ((snap.t - jitter.last) * TICK_MS - jitter.gap) * 0.1;
+        jitter.last = snap.t;
+        // Retard de ce snapshot par rapport aux plus rapides : montée immédiate, redescente lente
+        jitter.late = Math.max(now - (state.clockOffset + snap.t * TICK_MS), jitter.late * 0.985);
+        interpDelay = Core.clamp(jitter.gap * 1.2 + jitter.late + 8, TICK_MS * 2, 320);
         state.snaps.push({ time: snap.t * TICK_MS, data: snap });
         if (state.snaps.length > 30) state.snaps.shift();
 
@@ -635,7 +644,9 @@
     function interpolatedFrame(now) {
         const snaps = state.snaps;
         if (!snaps.length) return null;
-        const renderTime = now - state.clockOffset - INTERP_DELAY;
+        // Délai lissé pour ne pas faire accélérer / ralentir l'image quand il change
+        state.renderDelay = state.renderDelay ? state.renderDelay + (interpDelay - state.renderDelay) * 0.05 : interpDelay;
+        const renderTime = now - state.clockOffset - state.renderDelay;
 
         let a = snaps[0], b = snaps[0];
         for (let i = snaps.length - 1; i >= 0; i--) {
@@ -1062,7 +1073,7 @@
     // ---------- Rendu ----------
     // Qualité adaptative : si les images ralentissent, on baisse la résolution du canvas
     // (le coût de dessin est proportionnel au nombre de pixels), puis on la remonte quand ça va mieux
-    // (on regarde aussi le temps de dessin, pour ne pas punir un écran simplement bridé à 30 Hz)
+    // (si le JS est léger mais que les images restent longues, c'est la carte graphique : on baisse moins, jusqu'à 0,7)
     const quality = { scale: 1, acc: 0, work: 0, frames: 0, good: 0 };
     function adaptQuality(dt, work) {
         if (!state.playing || document.hidden || dt > 250) { quality.acc = quality.work = quality.frames = 0; return; }
@@ -1070,8 +1081,10 @@
         if (quality.acc < 1500) return;
         const avg = quality.acc / quality.frames, avgWork = quality.work / quality.frames;
         quality.acc = quality.work = quality.frames = 0;
-        if (avg > 21 && avgWork > 7 && quality.scale > 0.5) {
-            quality.scale = Math.max(0.5, quality.scale - 0.15); quality.good = 0; resize();
+        // Trop lent : soit le JS (avgWork), soit la carte graphique (images longues avec peu de JS, fréquent sur mobile)
+        const floor = avgWork > 7 ? 0.5 : 0.7;
+        if (avg > 21 && (avgWork > 7 || avg > 26) && quality.scale > floor) {
+            quality.scale = Math.max(floor, quality.scale - 0.15); quality.good = 0; resize();
         } else if (avg < 15 && quality.scale < 1 && ++quality.good >= 3) {
             quality.scale = Math.min(1, quality.scale + 0.15); quality.good = 0; resize();
         }

@@ -132,7 +132,7 @@
             this.size = opts.arenaSize || this.level.size;
             this.botCount = opts.botCount !== undefined ? opts.botCount : this.level.bots;
             this.eruptions = [];       // { id, x, y, at } : éruptions annoncées (niveau Volcan)
-            this.booms = [];           // éruptions déclenchées ce tick, pour les effets côté client
+            this.booms = [];           // éruptions récentes [x, y, tick], pour les effets côté client
             this.snakes = {};
             this.foods = [];
             this.tick = 0;
@@ -321,7 +321,8 @@
 
         // Niveau Volcan : une éruption est annoncée puis crache orbes et coffre
         updateEruptions() {
-            this.booms = [];
+            // Gardées quelques ticks : le serveur n'envoie pas un snapshot à chaque tick
+            if (this.booms.length) this.booms = this.booms.filter(b => this.tick - b[2] < 8);
             if (!this.level.eruptions) return;
             if (this.eruptions.length < 2 && Math.random() < 1 / (CONFIG.TICK_RATE * 9)) {
                 const m = 300;
@@ -336,7 +337,7 @@
                 this.eruptions.splice(i, 1);
                 this.sprayOrbs(e.x, e.y, 36, 3, '#ff7a1a', 30, 220);
                 this.spawnItem('chest', Math.random() < 0.3 ? 'legend' : 'normal', e);
-                this.booms.push([Math.round(e.x), Math.round(e.y)]);
+                this.booms.push([Math.round(e.x), Math.round(e.y), this.tick]);
             }
         }
 
@@ -826,7 +827,10 @@
             for (const e of this.eruptions) {
                 if (e.x > x0 && e.x < x1 && e.y > y0 && e.y < y1) eruptions.push([e.id, Math.round(e.x), Math.round(e.y), e.at - this.tick]);
             }
-            const booms = this.booms.filter(([bx, by]) => bx > x0 && bx < x1 && by > y0 && by < y1);
+            // Chaque éruption n'est envoyée qu'une fois à un client (sync), au tick même sinon
+            const since = sync ? (sync.boomTick === undefined ? this.tick - 1 : sync.boomTick) : this.tick - 1;
+            if (sync) sync.boomTick = this.tick;
+            const booms = this.booms.filter(([bx, by, bt]) => bt > since && bx > x0 && bx < x1 && by > y0 && by < y1).map(b => [b[0], b[1]]);
 
             const me = this.snakes[meId];
             const lb = this.leaderboard(10);

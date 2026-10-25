@@ -1,5 +1,5 @@
 /* Service Worker — Mich Snake : jeu jouable 100% hors-ligne */
-const CACHE = 'mich-snake-v6';
+const CACHE = 'mich-snake-v7';
 const ASSETS = ['./', 'index.html', 'css/style.css', 'js/core.js', 'js/tower.js', 'js/audio.js', 'js/fx.js', 'js/client.js', 'js/admin.js', 'js/account.js', 'js/quests.js', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', (e) => {

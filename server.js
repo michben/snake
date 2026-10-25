@@ -14,7 +14,14 @@ const { setupOAuth } = require('./oauth');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { perMessageDeflate: { threshold: 1024 } });
+// Compression des messages au niveau le plus rapide : presque le même gain de bande passante,
+// pour une fraction du CPU (la compression zlib était le premier poste de dépense du serveur)
+const io = new Server(server, {
+    perMessageDeflate: process.env.WS_DEFLATE === '0' ? false : {
+        threshold: 1024,
+        zlibDeflateOptions: { level: +(process.env.WS_DEFLATE_LEVEL || 1), memLevel: 8 }
+    }
+});
 // Derrière l'hébergeur (Render, Railway…), le HTTPS est terminé par un proxy : on lui fait confiance
 app.set('trust proxy', 1);
 
@@ -361,7 +368,27 @@ setInterval(() => {
     broadcastOnline();
 }, 3000);
 
-setInterval(() => {
+// Boucle à pas fixe : si le serveur (CPU partagé) prend du retard, on rattrape les ticks manqués
+// pour garder la même vitesse de jeu, puis on n'envoie qu'un seul snapshot.
+// Les snapshots partent un tick sur SNAPSHOT_EVERY (2 = 15 par seconde) : le client interpole entre eux
+// et le serveur fait deux fois moins de compression et d'envois, ce qui compte sur une petite instance.
+const TICK_MS = 1000 / CONFIG.TICK_RATE;
+const SNAPSHOT_EVERY = Math.max(1, parseInt(process.env.SNAPSHOT_EVERY, 10) || 2);
+let nextTick = performance.now(), tickCount = 0;
+function gameLoop() {
+    const now = performance.now();
+    let steps = 0, send = false;
+    while (now >= nextTick && steps < 4) {
+        stepWorlds();
+        nextTick += TICK_MS; steps++;
+        if (++tickCount % SNAPSHOT_EVERY === 0) send = true;
+    }
+    if (now - nextTick > 250) nextTick = now;             // trop de retard : on repart de maintenant
+    if (send) sendSnapshots();
+    setTimeout(gameLoop, Math.max(1, nextTick - performance.now()));
+}
+
+function stepWorlds() {
     // Seules les arènes où quelqu'un joue sont simulées : sur un petit serveur, ça divise le travail
     const active = new Set();
     for (const id in clients) if (clients[id].world) active.add(clients[id].world);
@@ -394,7 +421,9 @@ setInterval(() => {
             }
         }
     }
+}
 
+function sendSnapshots() {
     for (const id in clients) {
         const c = clients[id];
         const world = c.world && worlds[c.world];
@@ -406,10 +435,12 @@ setInterval(() => {
         if (!transport || !transport.writable) continue;
         const me = world.snakes[id];
         if (me) c.last = { x: me.x, y: me.y };
-        const snap = world.snapshotFor(id, { x: c.last.x, y: c.last.y, w: c.view.w, h: c.view.h }, world.tick % 15 === 0, c.sync);
+        c.sent = (c.sent || 0) + 1;
+        const snap = world.snapshotFor(id, { x: c.last.x, y: c.last.y, w: c.view.w, h: c.view.h }, c.sent % 8 === 1, c.sync);
         sock.emit('state', snap);
     }
-}, 1000 / CONFIG.TICK_RATE);
+}
+gameLoop();
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
