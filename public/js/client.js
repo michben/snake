@@ -18,7 +18,10 @@
     const POWERUPS = Core.POWERUPS;
     const LEVELS = Core.LEVELS;
     const TICK_MS = 1000 / Core.CONFIG.TICK_RATE;
-    const INTERP_DELAY = TICK_MS * 2.5;   // on rend ~2,5 ticks dans le passé pour toujours avoir 2 snapshots
+    // On rend un peu dans le passé pour toujours avoir 2 snapshots entre lesquels interpoler.
+    // Le délai s'adapte : écart entre snapshots + pire retard récent (réseau mobile, serveur qui hoquette)
+    const jitter = { gap: TICK_MS * 2, late: 0, last: 0 };
+    let interpDelay = TICK_MS * 2.5;
     const OFFLINE_ID = 'me';
 
     const $ = (id) => document.getElementById(id);
@@ -59,6 +62,10 @@
         worldEvent: null,      // [kind, secondes restantes] de l'événement fou en cours
         lb: [],
         playerCount: 0,
+        humanCount: 0,
+        online: null,          // joueurs en ligne { total, playing, levels, rooms }
+        room: null,            // room privée choisie { code, level }
+        bubbles: new Map(),    // messages éphémères au-dessus des serpents : id -> { text, until }
         angle: 0,
         boosting: false,
         camera: { x: Core.CONFIG.ARENA_SIZE / 2, y: Core.CONFIG.ARENA_SIZE / 2, zoom: 1 },
@@ -71,8 +78,10 @@
         name: store.get('snake_name', ''),
         skin: store.get('snake_skin', 'neon'),
         level: store.get('snake_level', 'neon'),
-        photo: store.get('snake_photo', '0') === '1'     // photo de profil à la place de l'emoji
+        // Photo à la place de l'emoji : '' (aucune), 'account' (photo du compte) ou 'custom' (photo importée)
+        photo: ({ '1': 'account', account: 'account', custom: 'custom' })[store.get('snake_photo', '0')] || ''
     };
+    let customPhoto = store.get('snake_custom_photo', '') || '';
     const levelUnlocked = (key) => !LEVELS[key].unlock || Tower.floor >= LEVELS[key].unlock;
     if (!LEVELS[prefs.level] || !levelUnlocked(prefs.level)) prefs.level = 'neon';
     const records = {
@@ -89,8 +98,13 @@
     function setNetStatus(kind, text) {
         $('netDot').className = 'dot ' + kind;
         $('netStatus').textContent = text;
-        $('playBtn').textContent = net.connected ? 'Jouer en ligne' : 'Jouer hors-ligne';
         $('offlineBtn').classList.toggle('hidden', !net.connected);
+        updatePlayButton();
+        updateOnlineUI();
+    }
+
+    function updatePlayButton() {
+        $('playBtn').textContent = !net.connected ? 'Jouer hors-ligne' : state.room ? `Jouer dans la room ${state.room.code}` : 'Jouer en ligne';
     }
 
     window.__ioLoaded.then((ok) => {
@@ -110,6 +124,9 @@
             setNetStatus('on', 'Serveur connecté');
             loadServerMusic();
             Account.connected();
+            // Lien d'invitation : ?room=CODE
+            const code = new URLSearchParams(location.search).get('room');
+            if (code && !state.room) joinRoom(code);
         });
         socket.on('disconnect', () => {
             net.connected = false;
@@ -124,7 +141,15 @@
             state.arenaSize = d.arenaSize;
             if (d.level) state.level = d.level;
         });
-        socket.on('state', (snap) => { if (state.mode === 'online') receiveSnapshot(snap); });
+        socket.on('online', (d) => { state.online = d; updateOnlineUI(); });
+        socket.on('roomError', (d) => {
+            toast('👥 ' + d.error, 'kill');
+            setRoom(null);
+            if (state.mode === 'online') { state.mode = null; state.playing = false; showScreen('menu'); }
+        });
+        socket.on('chat', onChat);
+        // Décodé même hors partie : le différentiel de nourriture doit rester à jour
+        socket.on('state', (snap) => { decodeSnapshot(snap); if (state.mode === 'online') receiveSnapshot(snap); });
         socket.on('died', (ev) => {
             if (ev.account) Account.updateUser(ev.account);
             if (state.mode === 'online') onDeath(ev);
@@ -158,7 +183,7 @@
         const w = offline.worlds[lv];
         w.removeSnake(OFFLINE_ID);
         const mine = w.addSnake(OFFLINE_ID, prefs.name || 'Serpent', prefs.skin, false);
-        if (usePhoto()) mine.avatar = Account.photoUrl();
+        if (usePhoto()) mine.avatar = usePhoto();
         state.myId = OFFLINE_ID;
         state.arenaSize = w.size;
         offline.timer = setInterval(() => {
@@ -190,12 +215,19 @@
         if (prefs.level === 'volcan') Quests.track('volcan', 1);
         state.snaps = [];
         state.clockOffset = null;
+        jitter.last = 0; jitter.late = 0; state.renderDelay = 0;
         state.lastMe = null;
         state.lastOrbs = 0;
         state.mode = mode;
         state.playing = true;
-        state.level = prefs.level;
-        state.arenaSize = LEVELS[prefs.level].size;
+        const room = mode === 'online' ? state.room : null;
+        const level = room ? room.level : prefs.level;
+        state.level = level;
+        state.arenaSize = LEVELS[level].size;
+        state.bubbles.clear();
+        $('chatFeed').innerHTML = '';
+        closeChat();
+        $('chatBtn').classList.toggle('hidden', mode !== 'online');
         state.chests = []; state.volcanoes = []; state.density = null;
         FX.clear();
         Sound.unlock();
@@ -204,19 +236,166 @@
 
         if (mode === 'online') {
             stopOfflineWorld();
-            net.socket.emit('joinGame', { name: prefs.name || 'Serpent', skin: prefs.skin, level: prefs.level, token: Account.token || undefined, photo: usePhoto() });
+            net.socket.emit('joinGame', {
+                name: prefs.name || 'Serpent', skin: prefs.skin, level, room: room ? room.code : undefined, token: Account.token || undefined,
+                photo: prefs.photo === 'account' && !!Account.photoUrl(), photoData: prefs.photo === 'custom' && customPhoto ? customPhoto : undefined
+            });
             sendView(true);
         } else {
             startOfflineWorld();
         }
         showScreen('hud');
         updateMissionHud(null);
-        const L = LEVELS[prefs.level];
-        toast(`${L.icon} ${L.name}`, 'info');
+        const L = LEVELS[level];
+        toast(room ? `👥 Room ${room.code} · ${L.icon} ${L.name}` : `${L.icon} ${L.name}`, 'info');
+    }
+
+    // ---------- Rooms privées ----------
+    function setRoom(room) {
+        state.room = room;
+        $('roomIdle').classList.toggle('hidden', !!room);
+        $('roomActive').classList.toggle('hidden', !room);
+        $('roomMsg').textContent = '';
+        if (room) {
+            $('roomCode').textContent = room.code;
+            const L = LEVELS[room.level];
+            $('roomLevel').textContent = `${L.icon} ${L.name}`;
+            $('roomBadge').textContent = room.players ? `👤 ${room.players} dedans` : '';
+        } else {
+            $('roomBadge').textContent = '';
+            // On retire ?room= de l'adresse pour ne pas y retourner au prochain chargement
+            if (location.search.includes('room=')) history.replaceState(null, '', location.pathname + location.hash);
+        }
+        updatePlayButton();
+    }
+    function roomMsg(text, isErr) {
+        $('roomMsg').textContent = text || '';
+        $('roomMsg').classList.toggle('err', !!isErr);
+    }
+    function joinRoom(code) {
+        code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        if (code.length !== 5) return roomMsg('Le code fait 5 caractères', true);
+        if (!net.connected) return roomMsg('Serveur non connecté', true);
+        net.socket.timeout(4000).emit('roomInfo', { code }, (err, r) => {
+            if (err || !r) return roomMsg('Pas de réponse du serveur', true);
+            if (r.error) return roomMsg('❌ ' + r.error, true);
+            setRoom(r);
+            Sound.play('click');
+            toast(`👥 Room ${r.code} rejointe : appuie sur Jouer !`, 'info');
+        });
+    }
+    function inviteLink(code) { return location.origin + location.pathname + '?room=' + code; }
+    $('roomCreate').addEventListener('click', () => {
+        if (!net.connected) return roomMsg('Serveur non connecté', true);
+        net.socket.timeout(4000).emit('createRoom', { level: prefs.level }, (err, r) => {
+            if (err || !r) return roomMsg('Pas de réponse du serveur', true);
+            if (r.error) return roomMsg('❌ ' + r.error, true);
+            setRoom(r);
+            Sound.play('levelup');
+            roomMsg(`Room créée ! Envoie le code ${r.code} ou le lien à tes amis.`);
+        });
+    });
+    $('roomJoin').addEventListener('click', () => joinRoom($('roomCodeInput').value));
+    $('roomCodeInput').addEventListener('keydown', (e) => { if (e.code === 'Enter') { e.preventDefault(); e.stopPropagation(); joinRoom(e.target.value); } });
+    $('roomLeave').addEventListener('click', () => { setRoom(null); Sound.play('click'); });
+    $('roomShare').addEventListener('click', async () => {
+        if (!state.room) return;
+        const url = inviteLink(state.room.code);
+        const text = `Viens jouer avec moi à Mich Snake ! Room ${state.room.code}`;
+        try {
+            if (navigator.share) { await navigator.share({ title: 'Mich Snake', text, url }); return; }
+        } catch (e) { if (e && e.name === 'AbortError') return; }
+        try { await navigator.clipboard.writeText(url); roomMsg('🔗 Lien copié : colle-le à tes amis'); }
+        catch (e) { roomMsg('Lien : ' + url); }
+    });
+
+    // ---------- Joueurs en ligne ----------
+    function updateOnlineUI() {
+        const o = state.online;
+        const show = net.connected && !!o;
+        $('onlineCount').classList.toggle('hidden', !show);
+        $('roomBox').classList.toggle('hidden', !net.connected);
+        if (!show) return;
+        $('onlineCount').textContent = `🟢 ${o.total} en ligne`;
+        $('onlineCount').title = `${o.playing} en partie${o.rooms ? ` · ${o.rooms} room${o.rooms > 1 ? 's' : ''} privée${o.rooms > 1 ? 's' : ''}` : ''}`;
+        document.querySelectorAll('.lv-online').forEach((el) => {
+            const n = o.levels[el.dataset.level] || 0;
+            el.textContent = n ? `👥 ${n} joueur${n > 1 ? 's' : ''} en ce moment` : '';
+        });
+    }
+
+    // ---------- Messages éphémères ----------
+    const QUICK_CHAT = ['👋', '😂', '🔥', 'GG', '😱', '❤️', '😡', 'Viens !'];
+    function openChat() {
+        if (state.mode !== 'online' || !state.playing) return;
+        $('chatPanel').classList.remove('hidden');
+        if (!isTouch) $('chatInput').focus();
+    }
+    function closeChat() {
+        $('chatPanel').classList.add('hidden');
+        $('chatInput').blur();
+    }
+    function sendChat(text) {
+        text = String(text || '').trim();
+        if (!text || !net.connected) return;
+        net.socket.emit('chat', { text });
+        $('chatInput').value = '';
+        closeChat();
+    }
+    function onChat(m) {
+        if (state.mode !== 'online') return;
+        state.bubbles.set(m.id, { text: m.text, until: performance.now() + 5000 });
+        const line = document.createElement('div');
+        line.className = 'chat-line' + (m.id === state.myId ? ' me' : '');
+        const who = document.createElement('b');
+        who.textContent = m.name;
+        line.append(who, document.createTextNode(m.text));
+        const feed = $('chatFeed');
+        feed.appendChild(line);
+        while (feed.children.length > 5) feed.firstChild.remove();
+        setTimeout(() => line.remove(), 6000);
+        if (m.id !== state.myId) Sound.play('click');
+    }
+    for (const q of QUICK_CHAT) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = q;
+        b.addEventListener('click', () => sendChat(q));
+        $('chatQuick').appendChild(b);
+    }
+    $('chatForm').addEventListener('submit', (e) => { e.preventDefault(); sendChat($('chatInput').value); });
+    $('chatInput').addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.code === 'Escape') closeChat();
+    });
+    $('chatBtn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if ($('chatPanel').classList.contains('hidden')) openChat(); else closeChat();
+    });
+
+    // Bulle au-dessus de la tête d'un serpent
+    function drawBubble(text, x, y) {
+        const z = Math.max(0.7, state.camera.zoom);
+        const fs = 14 / z;
+        ctx.save();
+        ctx.font = `bold ${fs}px 'Segoe UI', sans-serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        const w = Math.min(ctx.measureText(text).width, 260 / z) + 16 / z, h = fs + 12 / z;
+        const bx = x - w / 2, by = y - h;
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = 'rgba(255,255,255,0.95)';
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(bx, by, w, h, h / 2); else ctx.rect(bx, by, w, h);
+        ctx.moveTo(x - 6 / z, by + h); ctx.lineTo(x, by + h + 7 / z); ctx.lineTo(x + 6 / z, by + h);
+        ctx.fill();
+        ctx.fillStyle = '#10141f';
+        ctx.fillText(text, x, by + h / 2, 260 / z);
+        ctx.restore();
     }
 
     const levelScene = () => (state.level === 'volcan' ? 'game2' : 'game');
-    const usePhoto = () => prefs.photo && !!Account.photoUrl();
+    // Photo utilisée comme skin (adresse ou image importée), ou null pour l'emoji
+    const usePhoto = () => prefs.photo === 'custom' ? (customPhoto || null) : prefs.photo === 'account' ? Account.photoUrl() : null;
 
     function onDeath(ev) {
         state.playing = false;
@@ -355,6 +534,21 @@
     };
 
     // ---------- Snapshots & interpolation ----------
+    // Snapshot en ligne compact : corps codés en écarts, nourriture en différentiel (voir Core.snapshotFor)
+    const knownFoods = new Map();
+    function decodeSnapshot(snap) {
+        if (!snap.sp) return;
+        for (const sn of snap.s) {
+            const g = sn.g;
+            for (let i = 2; i < g.length; i++) g[i] += g[i - 2];
+            sn.sp = snap.sp;
+        }
+        if (snap.fk) knownFoods.clear();
+        for (const id of snap.fr || []) knownFoods.delete(id);
+        for (const f of snap.fa || []) knownFoods.set(f[0], f);
+        snap.f = Array.from(knownFoods.values());
+    }
+
     function receiveSnapshot(snap) {
         const now = performance.now();
         // Horloge lissée : temps local estimé du tick serveur, robuste au jitter réseau
@@ -362,6 +556,11 @@
         if (state.clockOffset === null || Math.abs(offset - state.clockOffset) > 500) state.clockOffset = offset;
         else state.clockOffset += (offset - state.clockOffset) * (offset < state.clockOffset ? 0.2 : 0.02);
 
+        if (jitter.last && snap.t > jitter.last) jitter.gap += ((snap.t - jitter.last) * TICK_MS - jitter.gap) * 0.1;
+        jitter.last = snap.t;
+        // Retard de ce snapshot par rapport aux plus rapides : montée immédiate, redescente lente
+        jitter.late = Math.max(now - (state.clockOffset + snap.t * TICK_MS), jitter.late * 0.985);
+        interpDelay = Core.clamp(jitter.gap * 1.2 + jitter.late + 8, TICK_MS * 2, 320);
         state.snaps.push({ time: snap.t * TICK_MS, data: snap });
         if (state.snaps.length > 30) state.snaps.shift();
 
@@ -393,6 +592,7 @@
         }
         state.lb = snap.lb;
         state.playerCount = snap.n;
+        state.humanCount = snap.h || 1;
         if (snap.me) {
             state.lastMe = snap.me;
             onStats(snap.me, now);
@@ -444,7 +644,9 @@
     function interpolatedFrame(now) {
         const snaps = state.snaps;
         if (!snaps.length) return null;
-        const renderTime = now - state.clockOffset - INTERP_DELAY;
+        // Délai lissé pour ne pas faire accélérer / ralentir l'image quand il change
+        state.renderDelay = state.renderDelay ? state.renderDelay + (interpDelay - state.renderDelay) * 0.05 : interpDelay;
+        const renderTime = now - state.clockOffset - state.renderDelay;
 
         let a = snaps[0], b = snaps[0];
         for (let i = snaps.length - 1; i >= 0; i--) {
@@ -469,7 +671,7 @@
             const g = new Array(n);
             for (let i = 0; i < n; i++) g[i] = i < na ? lerp(ga[i], gb[i], t) : gb[i];
             return {
-                id: sb.id, n: sb.n, k: sb.k, b: sb.b, sc: sb.sc, p: sb.p, v: sb.v,
+                id: sb.id, n: sb.n, k: sb.k, b: sb.b, sc: sb.sc, p: sb.p, v: sb.v, sp: sb.sp, m: sb.m,
                 r: lerp(sa.r, sb.r, t),
                 a: sa.a + Core.angleDiff(sa.a, sb.a) * t,
                 g
@@ -518,6 +720,7 @@
         if (e.target && e.target.tagName === 'INPUT') return;
         if (e.code === 'KeyM') toggleMute();
         if (e.code === 'Space' && state.playing) { state.boosting = true; e.preventDefault(); }
+        if (e.code === 'Enter' && state.playing && state.mode === 'online') { e.preventDefault(); openChat(); return; }
         if (e.code === 'Enter' && !state.playing) {
             if (!$('menu').classList.contains('hidden')) $('playBtn').click();
             else if (!$('deathScreen').classList.contains('hidden')) $('replayBtn').click();
@@ -535,7 +738,7 @@
         lastTouchAt = performance.now();
         setTouchMode();
         if (!state.playing) return;
-        if (e.target.closest && e.target.closest('.hud-btn, .collapsible.collapsed')) return;   // boutons du HUD
+        if (e.target.closest && e.target.closest('.hud-btn, .collapsible.collapsed, #chatPanel')) return;   // boutons du HUD, messages
         for (const t of e.changedTouches) {
             if (t.target === boostBtn || boostBtn.contains(t.target)) continue;
             if (joy.id === null) {
@@ -604,7 +807,7 @@
             const b = document.createElement('button');
             b.className = 'level-card level-' + key + (key === prefs.level ? ' active' : '') + (open ? '' : ' locked');
             b.innerHTML = `<span class="lv-icon">${open ? L.icon : '🔒'}</span><span class="lv-text"><b>${L.name}</b><small>${open ? L.desc
-                : `Atteignez l'étage ${L.unlock} de la Tour des Défis pour débloquer ce niveau (vous êtes à l'étage ${Tower.floor}).`}</small></span>`;
+                : `Atteignez l'étage ${L.unlock} de la Tour des Défis pour débloquer ce niveau (vous êtes à l'étage ${Tower.floor}).`}</small><small class="lv-online" data-level="${key}"></small></span>`;
             b.addEventListener('click', () => {
                 if (!open) { Sound.play('warning'); toast(`🔒 ${L.name} : atteignez l'étage ${L.unlock} de la Tour des Défis`, 'info'); return; }
                 prefs.level = key;
@@ -614,6 +817,7 @@
             });
             el.appendChild(b);
         }
+        updateOnlineUI();
     }
 
     // ---------- Panneaux réductibles du HUD ----------
@@ -635,40 +839,89 @@
         });
     }
 
+    function setPhoto(kind) {
+        prefs.photo = kind;
+        store.set('snake_photo', kind || '0');
+    }
+
+    // Photo importée : recadrée en carré et réduite à 128 px (JPEG ~8 Ko), gardée sur l'appareil
+    const photoInput = document.createElement('input');
+    photoInput.type = 'file';
+    photoInput.accept = 'image/*';
+    photoInput.addEventListener('change', () => {
+        const file = photoInput.files && photoInput.files[0];
+        photoInput.value = '';
+        if (!file) return;
+        if (!/^image\//.test(file.type)) { toast('❌ Choisis une image', 'kill'); return; }
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+            URL.revokeObjectURL(url);
+            const S = 128, c = document.createElement('canvas');
+            c.width = c.height = S;
+            const g = c.getContext('2d');
+            const side = Math.min(img.naturalWidth, img.naturalHeight);
+            g.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, S, S);
+            customPhoto = c.toDataURL('image/jpeg', 0.82);
+            store.set('snake_custom_photo', customPhoto);
+            setPhoto('custom');
+            Sound.play('levelup');
+            toast('📸 Ta photo est ton nouveau skin !', 'gold');
+            buildSkinSelector();
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); toast('❌ Image illisible', 'kill'); };
+        img.src = url;
+    });
+
+    function photoTile(src, active, title, onClick) {
+        const b = document.createElement('div');
+        b.className = 'skin-btn photo' + (active ? ' active' : '');
+        b.title = title;
+        if (src) {
+            const img = new Image();
+            img.src = src; img.alt = '';
+            b.appendChild(img);
+        } else {
+            b.textContent = '📸';
+        }
+        b.style.setProperty('--glow', SKINS[prefs.skin].color);
+        b.addEventListener('click', onClick);
+        return b;
+    }
+
     function buildSkinSelector() {
         const el = $('skinSelector');
         el.innerHTML = '';
         let unlocked = 0;
         const keys = Object.keys(SKINS);
+        // Ma photo (importée depuis l'appareil) : un clic l'active, un 2e clic permet d'en choisir une autre
+        el.appendChild(photoTile(customPhoto, prefs.photo === 'custom', customPhoto ? 'Ma photo (cliquer à nouveau pour la changer)' : 'Choisir une photo comme skin', () => {
+            if (!customPhoto || prefs.photo === 'custom') { photoInput.click(); return; }
+            setPhoto('custom');
+            buildSkinSelector();
+        }));
         // Photo de profil (compte X / Facebook, ou identité claude.ai dans la version web)
         const photo = Account.photoUrl();
         if (photo) {
-            const b = document.createElement('div');
-            b.className = 'skin-btn photo' + (prefs.photo ? ' active' : '');
-            b.title = 'Ma photo de profil';
-            const img = new Image();
-            img.src = photo; img.alt = '';
-            b.appendChild(img);
-            b.style.setProperty('--glow', SKINS[prefs.skin].color);
-            b.addEventListener('click', () => {
-                prefs.photo = !prefs.photo;
-                store.set('snake_photo', prefs.photo ? '1' : '0');
+            el.appendChild(photoTile(photo, prefs.photo === 'account', 'Ma photo de profil', () => {
+                setPhoto(prefs.photo === 'account' ? '' : 'account');
                 buildSkinSelector();
-            });
-            el.appendChild(b);
+            }));
         }
         for (const key of keys) {
             const s = SKINS[key];
             const ok = Tower.isUnlocked(key);
             if (ok) unlocked++;
             const b = document.createElement('div');
-            b.className = 'skin-btn' + (ok ? '' : ' locked') + (key === prefs.skin ? ' active' : '');
+            b.className = 'skin-btn' + (ok ? '' : ' locked') + (key === prefs.skin && !usePhoto() ? ' active' : '');
             b.textContent = s.emoji;
             b.style.setProperty('--glow', s.color);
             const lockText = s.quest ? `réussissez les quêtes du jour ${s.quest > 1 ? s.quest + ' jours' : 'une journée'}` : `atteignez l'étage ${s.unlock} de la Tour des Défis`;
             b.title = ok ? s.name : `${s.name} — ${lockText}`;
             b.addEventListener('click', () => {
                 if (!ok) { $('skinName').textContent = `🔒 ${s.name} : ${lockText}`; return; }
+                // Avec une photo active, l'emoji choisi donne la couleur du halo ; un 2e clic repasse à l'emoji
+                if (usePhoto() && key === prefs.skin) setPhoto('');
                 prefs.skin = key;
                 store.set('snake_skin', key);
                 buildSkinSelector();
@@ -676,7 +929,9 @@
             el.appendChild(b);
         }
         $('skinCount').textContent = `${unlocked}/${keys.length} débloqués`;
-        $('skinName').textContent = prefs.photo && photo ? `📸 Ma photo · halo ${SKINS[prefs.skin].name}` : `${SKINS[prefs.skin].emoji} ${SKINS[prefs.skin].name}`;
+        $('skinName').textContent = usePhoto()
+            ? `📸 ${prefs.photo === 'custom' ? 'Ma photo' : 'Photo de profil'} · halo ${SKINS[prefs.skin].emoji} ${SKINS[prefs.skin].name} (re-clique l'emoji pour le reprendre)`
+            : `${SKINS[prefs.skin].emoji} ${SKINS[prefs.skin].name} · 📸 pour jouer avec ta photo`;
     }
 
     function updateQuestUI() {
@@ -748,7 +1003,8 @@
             rows.push(`<div class="lb-item me"><span class="nm">#${me.rank} ${escapeHtml(prefs.name || 'Serpent')}</span><span>${me.score}</span></div>`);
         }
         $('lbList').innerHTML = rows.join('');
-        $('playerCount').textContent = `${state.playerCount} en jeu`;
+        const h = state.humanCount;
+        $('playerCount').textContent = state.mode === 'online' ? `👤 ${h} joueur${h > 1 ? 's' : ''} · ${state.playerCount} serpents` : `${state.playerCount} en jeu`;
     }
 
     const toastsEl = $('toasts');
@@ -796,8 +1052,7 @@
         const was = Account.displayName();
         Account.signOut();
         if ($('playerName').value === was) $('playerName').value = '';
-        prefs.photo = false;
-        store.set('snake_photo', '0');
+        if (prefs.photo === 'account') setPhoto('');
         toast('👋 Déconnecté', 'info');
         updateAccountUI();
     });
@@ -808,12 +1063,17 @@
     $('playBtn').addEventListener('click', () => startGame(net.connected ? 'online' : 'offline'));
     $('offlineBtn').addEventListener('click', () => startGame('offline'));
     $('replayBtn').addEventListener('click', () => startGame(state.mode === 'online' && net.connected ? 'online' : 'offline'));
-    $('menuBtn').addEventListener('click', () => { stopOfflineWorld(); state.mode = null; showScreen('menu'); });
+    $('menuBtn').addEventListener('click', () => {
+        stopOfflineWorld();
+        if (state.mode === 'online' && net.connected) net.socket.emit('leaveGame');
+        state.mode = null;
+        showScreen('menu');
+    });
 
     // ---------- Rendu ----------
     // Qualité adaptative : si les images ralentissent, on baisse la résolution du canvas
     // (le coût de dessin est proportionnel au nombre de pixels), puis on la remonte quand ça va mieux
-    // (on regarde aussi le temps de dessin, pour ne pas punir un écran simplement bridé à 30 Hz)
+    // (si le JS est léger mais que les images restent longues, c'est la carte graphique : on baisse moins, jusqu'à 0,7)
     const quality = { scale: 1, acc: 0, work: 0, frames: 0, good: 0 };
     function adaptQuality(dt, work) {
         if (!state.playing || document.hidden || dt > 250) { quality.acc = quality.work = quality.frames = 0; return; }
@@ -821,8 +1081,10 @@
         if (quality.acc < 1500) return;
         const avg = quality.acc / quality.frames, avgWork = quality.work / quality.frames;
         quality.acc = quality.work = quality.frames = 0;
-        if (avg > 21 && avgWork > 7 && quality.scale > 0.5) {
-            quality.scale = Math.max(0.5, quality.scale - 0.15); quality.good = 0; resize();
+        // Trop lent : soit le JS (avgWork), soit la carte graphique (images longues avec peu de JS, fréquent sur mobile)
+        const floor = avgWork > 7 ? 0.5 : 0.7;
+        if (avg > 21 && (avgWork > 7 || avg > 26) && quality.scale > floor) {
+            quality.scale = Math.max(floor, quality.scale - 0.15); quality.good = 0; resize();
         } else if (avg < 15 && quality.scale < 1 && ++quality.good >= 3) {
             quality.scale = Math.min(1, quality.scale + 0.15); quality.good = 0; resize();
         }
@@ -991,8 +1253,9 @@
         const bodySize = r * 1.9;
         const bodySpr = snakeSprite(p, skin, bodySize * scale);
         const bs = bodySize * 1.25;
-        const step = Math.max(2, Math.round(r * 0.8 / Core.CONFIG.SEGMENT_DISTANCE));
-        for (let i = n - 1; i >= 2; i--) {
+        const sp = p.sp || 1;                            // points espacés de sp segments en ligne
+        const step = Math.max(sp > 1 ? 1 : 2, Math.round(r * 0.8 / (Core.CONFIG.SEGMENT_DISTANCE * sp)));
+        for (let i = n - 1; i >= (sp > 1 ? 1 : 2); i--) {
             if (i % step) continue;
             const x = g[i * 2], y = g[i * 2 + 1];
             if (x + r < x0 || x - r > x1 || y + r < y0 || y - r > y1) continue;
@@ -1059,6 +1322,11 @@
         if (isLeader) {
             ctx.font = `${20 / Math.max(0.7, state.camera.zoom)}px sans-serif`;
             ctx.fillText('👑', hx, hy - r * 1.4 - 26);
+        }
+        const bubble = state.bubbles.get(p.id);
+        if (bubble) {
+            if (bubble.until < time) state.bubbles.delete(p.id);
+            else drawBubble(bubble.text, hx, hy - r * 1.4 - (isLeader ? 48 : 30) / Math.max(0.7, state.camera.zoom));
         }
     }
 
@@ -1284,7 +1552,7 @@
             state.fps = fpsFrames; fpsFrames = 0; fpsLast = now;
             const L = LEVELS[state.level];
             $('netInfo').textContent = state.mode === 'online'
-                ? `${L.icon} ${L.name} · 🌐 ${state.ping} ms · ${state.fps} FPS`
+                ? `${state.room ? `👥 Room ${state.room.code} · ` : ''}${L.icon} ${L.name} · 🌐 ${state.ping} ms · ${state.fps} FPS`
                 : state.mode === 'offline' ? `${L.icon} ${L.name} · 🤖 Hors-ligne · ${state.fps} FPS` : '';
         }
 
@@ -1387,8 +1655,7 @@
     requestAnimationFrame(render);
     if (Account.pendingError) setTimeout(() => toast('❌ ' + Account.pendingError, 'kill'), 600);
     if (Account.justLoggedIn) {
-        prefs.photo = true;
-        store.set('snake_photo', '1');
+        setPhoto('account');
         setTimeout(() => toast('✅ Connecté ! Ta photo de profil sert de skin 📸', 'gold'), 1200);
     }
 

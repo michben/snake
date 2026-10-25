@@ -1,0 +1,35 @@
+# Mich Snake — déploiement en un clic sur Render (https://render.com/deploy?repo=https://github.com/michben/snake)
+# Le disque persistant garde comptes, sessions, photos de profil et musiques importées entre deux redémarrages.
+# Il demande l'offre « starter » (payante) : en offre gratuite, retirez `disk` et passez `plan: free`,
+# le jeu marche mais les comptes repartent de zéro à chaque redémarrage du serveur.
+services:
+  - type: web
+    name: mich-snake
+    runtime: node
+    plan: starter
+    region: frankfurt
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    disk:
+      name: mich-snake-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: DATA_DIR
+        value: /var/data
+      - key: ADMIN_EMAIL
+        value: sospchs@gmail.com
+      # À remplir dans le tableau de bord Render (jamais dans le dépôt)
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: X_CLIENT_ID
+        sync: false
+      - key: X_CLIENT_SECRET
+        sync: false
+      - key: FACEBOOK_APP_ID
+        sync: false
+      - key: FACEBOOK_APP_SECRET
+        sync: false

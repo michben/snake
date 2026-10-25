@@ -349,3 +349,40 @@ body.touch #eventBanner { top: 48px; font-size: 0.8rem; padding: 6px 12px; }
 .level-card.locked { filter: grayscale(0.85) brightness(0.7); cursor: not-allowed; }
 .acc-buttons { display: flex; flex-direction: column; gap: 4px; flex: none; }
 .acc-buttons .btn-small { justify-content: center; padding: 6px 10px; }
+
+/* ---------- Joueurs en ligne & rooms entre amis ---------- */
+.online-count { margin-left: 4px; padding-left: 8px; border-left: 1px solid rgba(255,255,255,0.15); color: #9dffb0; font-weight: 700; }
+.lv-online { display: block; margin-top: 2px; font-size: 0.68rem; color: #9dffb0; font-weight: 700; }
+.room-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.room-row .btn { width: auto; flex: 1; margin: 0; white-space: nowrap; }
+.room-row input { width: 92px; flex: 0 0 92px; margin: 0; padding: 9px 8px; text-align: center; text-transform: uppercase; letter-spacing: 3px; font-weight: 800; }
+.room-code { color: var(--gold); letter-spacing: 3px; font-size: 1.05rem; }
+.room-box #roomMsg { margin-top: 6px; }
+
+/* ---------- Messages éphémères ---------- */
+#chatBtn { position: absolute; top: 14px; left: calc(50% + 24px); pointer-events: auto; width: 32px; height: 32px; font-size: 0.9rem; }
+body.touch #chatBtn { top: 10px; }
+#chatFeed { position: absolute; left: 16px; bottom: 96px; width: min(340px, 60vw); display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
+.chat-line {
+    align-self: flex-start; max-width: 100%; padding: 5px 10px; border-radius: 10px; font-size: 0.82rem; color: #e8eef8;
+    background: rgba(10,14,24,0.72); border: 1px solid rgba(255,255,255,0.1); overflow-wrap: anywhere;
+    animation: toastIn 0.2s ease-out, chatOut 0.6s ease-in 5.4s forwards;
+}
+.chat-line b { color: var(--accent); margin-right: 4px; }
+.chat-line.me b { color: var(--gold); }
+@keyframes chatOut { to { opacity: 0; transform: translateY(-6px); } }
+#chatPanel {
+    position: absolute; left: 50%; bottom: 90px; transform: translateX(-50%); width: min(420px, 92vw); pointer-events: auto;
+    background: rgba(10,14,24,0.9); border: 1px solid var(--panel-border); border-radius: 14px; padding: 8px; z-index: 8;
+}
+#chatForm { display: flex; gap: 6px; }
+#chatForm input { flex: 1; margin: 0; padding: 9px 10px; font-size: 0.9rem; }
+#chatForm .btn { width: auto; padding: 8px 14px; }
+.chat-quick { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+.chat-quick button { flex: 1; min-width: 40px; padding: 6px 4px; border-radius: 9px; border: 1px solid #2a3655; background: rgba(255,255,255,0.06); color: #fff; font-size: 0.95rem; cursor: pointer; }
+body.touch #chatFeed { left: 10px; bottom: 150px; width: 62vw; }
+body.touch .chat-line { font-size: 0.72rem; padding: 4px 8px; }
+body.touch #chatPanel { top: 52px; bottom: auto; }
+.room-row { flex-wrap: wrap; }
+@media (max-width: 520px) { #roomCreate { flex-basis: 100%; } }
+body.touch #chatBtn { left: calc(50% - 56px); }

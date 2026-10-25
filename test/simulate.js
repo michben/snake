@@ -108,6 +108,36 @@ w5.step();
 assert(!w5.worldEvent, "l'événement s'arrête quand l'Hydre tombe");
 console.log(`Événements fous : ${[...seen].join(', ')}`);
 
+// Snapshots en ligne : nourriture différentielle + corps codés en écarts = même image que le snapshot complet
+const w6 = new World({ level: 'volcan' });
+w6.addSnake('n', 'N', 'neon', false);
+const sync = { foods: new Map(), reset: true };
+const known = new Map();
+let deltaBytes = 0, fullBytes = 0;
+for (let i = 0; i < CONFIG.TICK_RATE * 60; i++) {
+    if (w6.snakes.n) w6.setInput('n', Math.sin(i / 50) * Math.PI, i % 120 < 15);
+    w6.step(); w6.drainEvents();
+    if (!w6.snakes.n) w6.addSnake('n', 'N', 'neon', false);
+    const me = w6.snakes.n, view = { x: me.x, y: me.y, w: 1800, h: 1100 };
+    const d = w6.snapshotFor('n', view, false, sync), f = w6.snapshotFor('n', view, false);
+    deltaBytes += JSON.stringify(d).length; fullBytes += JSON.stringify(f).length;
+    if (d.fk) known.clear();
+    for (const id of d.fr || []) known.delete(id);
+    for (const x of d.fa || []) known.set(x[0], x);
+    assert.strictEqual(known.size, f.f.length, 'même nombre d\'orbes que le snapshot complet');
+    for (const x of f.f) assert.deepStrictEqual(known.get(x[0]), x, 'orbe identique');
+    const sd = d.s.find(s => s.id === 'n'), sf = f.s.find(s => s.id === 'n');
+    const g = sd.g.slice();
+    for (let k = 2; k < g.length; k++) g[k] += g[k - 2];
+    for (let k = 0; k < g.length / 2; k++) {
+        assert.strictEqual(g[k * 2], sf.g[k * 2 * CONFIG.NET_SEG_STEP], 'corps décodé');
+        assert.strictEqual(g[k * 2 + 1], sf.g[k * 2 * CONFIG.NET_SEG_STEP + 1], 'corps décodé');
+    }
+}
+assert(deltaBytes * 3 < fullBytes, 'le snapshot en ligne est au moins 3 fois plus léger');
+assert(w6.foods.length < CONFIG.FOOD_HARD_CAP, 'les orbes semées s\'éteignent');
+console.log(`Snapshots en ligne : ${Math.round(deltaBytes / 1800)} octets en moyenne contre ${Math.round(fullBytes / 1800)} en complet`);
+
 const avg = (ms / ticks).toFixed(3);
 console.log(`OK — ${ticks} ticks en ${ms} ms (${avg} ms/tick), ${deaths} morts dont ${kills} kills`);
 console.log(`Bonus : ${fx.chest} coffres ouverts, ${fx.power} améliorations ramassées, ${fx.powerEnd} expirées`);
