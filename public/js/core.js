@@ -35,7 +35,9 @@
         TURBO_SPEED: 12.5,
         EVENT_EVERY: [45, 80],       // secondes entre deux événements fous (min, max)
         FREEZE_RANGE: 1000,
-        SHOCK_RANGE: 480
+        SHOCK_RANGE: 480,
+        FOOD_LIFE: [40, 60],         // secondes de vie des orbes semées (restes, éruptions, festins…)
+        NET_SEG_STEP: 2              // un point de corps sur 2 envoyé sur le réseau (le client trace la courbe)
     };
 
     // Niveaux : chaque arène a sa taille, son ambiance (rendu client) et ses règles
@@ -154,9 +156,13 @@
             }
         }
 
+        // Les orbes posées à un endroit précis (restes d'un serpent, éruptions, boost…) finissent par
+        // s'éteindre : sans ça le Volcan s'encombrait de 1 500 orbes et les snapshots explosaient
         createFood(x, y, value = 1, color = null) {
             const m = 50;
+            const [l0, l1] = CONFIG.FOOD_LIFE;
             return {
+                exp: x !== undefined ? this.tick + Math.round((l0 + Math.random() * (l1 - l0)) * CONFIG.TICK_RATE) : 0,
                 id: this.nextFoodId++,
                 x: x !== undefined ? clamp(x, 10, this.size - 10) : Math.random() * (this.size - 2 * m) + m,
                 y: y !== undefined ? clamp(y, 10, this.size - 10) : Math.random() * (this.size - 2 * m) + m,
@@ -444,8 +450,8 @@
                 if (id === s.id) continue;
                 const o = this.snakes[id];
                 // Éliminer rapidement les serpents lointains
-                if (Math.abs(o.x - s.x) > 900 + o.segments.length * CONFIG.SEGMENT_DISTANCE &&
-                    Math.abs(o.y - s.y) > 900 + o.segments.length * CONFIG.SEGMENT_DISTANCE) continue;
+                const far = probeLen + o.radius + s.radius + o.segments.length * CONFIG.SEGMENT_DISTANCE;
+                if (Math.abs(o.x - s.x) > far || Math.abs(o.y - s.y) > far) continue;
                 for (let p = 0; p < 3; p++) {
                     const a = s.angle + probes[p];
                     const px = s.x + Math.cos(a) * probeLen, py = s.y + Math.sin(a) * probeLen;
@@ -625,6 +631,7 @@
                     }
                 }
             }
+            if (this.tick % 15 === 0) this.expireFoods();
             while (this.foods.length < this.level.maxFood) this.foods.push(this.createFood());
             this.updateEruptions();
 
@@ -686,6 +693,20 @@
             this.updateWorldEvent();
         }
 
+        expireFoods() {
+            const t = this.tick;
+            for (let i = this.foods.length - 1; i >= 0; i--) {
+                const f = this.foods[i];
+                if (f.exp && f.exp <= t) { this.foods[i] = this.foods[this.foods.length - 1]; this.foods.pop(); }
+            }
+        }
+
+        humanCount() {
+            let n = 0;
+            for (const id in this.snakes) if (!this.snakes[id].isBot) n++;
+            return n;
+        }
+
         // Secondes restantes de chaque bonus actif
         powersLeft(s) {
             const out = {};
@@ -699,10 +720,14 @@
         drainEvents() { const e = this.events; this.events = []; return e; }
 
         leaderboard(limit = 10) {
-            return Object.values(this.snakes)
+            // Calculé une fois par tick, même avec plusieurs joueurs connectés
+            if (this.lbCache && this.lbCache.tick === this.tick && this.lbCache.limit === limit) return this.lbCache.list;
+            const list = Object.values(this.snakes)
                 .sort((a, b) => b.score - a.score)
                 .slice(0, limit)
                 .map(s => [s.id, s.name, Math.floor(s.score), Math.round(s.x), Math.round(s.y)]);
+            this.lbCache = { tick: this.tick, limit, list };
+            return list;
         }
 
         // Grille de densité de nourriture pour la minimap (valeurs 0..255)
@@ -723,8 +748,13 @@
         /*
          * Snapshot culled pour un joueur : seules les entités dans son champ de
          * vision élargi (view = {x, y, w, h} en unités monde) sont envoyées.
+         *
+         * `sync` (en ligne) : état réseau du joueur. La nourriture est alors envoyée en différentiel
+         * (`fa` = orbes nouvelles ou déplacées, `fr` = orbes disparues de sa vue) et les corps
+         * des serpents avec un point sur NET_SEG_STEP : le snapshot pèse 5 à 10 fois moins.
+         * Sans `sync` (hors-ligne), snapshot complet.
          */
-        snapshotFor(meId, view, withDensity) {
+        snapshotFor(meId, view, withDensity, sync) {
             const margin = 200;
             const x0 = view.x - view.w / 2 - margin, x1 = view.x + view.w / 2 + margin;
             const y0 = view.y - view.h / 2 - margin, y1 = view.y + view.h / 2 + margin;
@@ -741,10 +771,23 @@
                     }
                 }
                 if (!visible) continue;
-                const flat = new Array(segs.length * 2);
-                for (let i = 0; i < segs.length; i++) {
-                    flat[i * 2] = Math.round(segs[i].x);
-                    flat[i * 2 + 1] = Math.round(segs[i].y);
+                const flat = [];
+                if (sync) {
+                    // En ligne : un point sur NET_SEG_STEP, queue hors de vue coupée, et chaque point
+                    // codé en écart avec le précédent (2 à 3 caractères au lieu de 4 à 5)
+                    let last = 0;
+                    for (let i = 0; i < segs.length; i++) {
+                        const g = segs[i];
+                        if (g.x > x0 && g.x < x1 && g.y > y0 && g.y < y1) last = i;
+                    }
+                    let px = 0, py = 0;
+                    for (let i = 0; i <= last + CONFIG.NET_SEG_STEP && i < segs.length; i += CONFIG.NET_SEG_STEP) {
+                        const x = Math.round(segs[i].x), y = Math.round(segs[i].y);
+                        flat.push(x - px, y - py);
+                        px = x; py = y;
+                    }
+                } else {
+                    for (let i = 0; i < segs.length; i++) flat.push(Math.round(segs[i].x), Math.round(segs[i].y));
                 }
                 snakes.push({
                     id: s.id, n: s.name, k: s.skin, a: Math.round(s.angle * 100) / 100,
@@ -755,11 +798,22 @@
                 if (s.avatar) snakes[snakes.length - 1].v = s.avatar;
             }
 
-            const foods = [];
+            const foods = [], removed = [];
+            const known = sync && sync.foods, seen = sync ? new Map() : null;
             for (const f of this.foods) {
                 if (f.x > x0 && f.x < x1 && f.y > y0 && f.y < y1) {
-                    foods.push([f.id, Math.round(f.x), Math.round(f.y), f.radius, f.color]);
+                    const fx = Math.round(f.x), fy = Math.round(f.y);
+                    if (sync) {
+                        const pos = fx * 8192 + fy;
+                        seen.set(f.id, pos);
+                        if (known.get(f.id) === pos) continue;
+                    }
+                    foods.push([f.id, fx, fy, f.radius, f.color]);
                 }
+            }
+            if (sync) {
+                for (const id of known.keys()) if (!seen.has(id)) removed.push(id);
+                sync.foods = seen;
             }
 
             const items = [];
@@ -784,11 +838,11 @@
             const snap = {
                 t: this.tick,
                 s: snakes,
-                f: foods,
                 it: items,
                 lv: this.levelKey,
                 lb,
                 n: Object.keys(this.snakes).length,
+                h: this.humanCount(),
                 me: me ? {
                     score: Math.floor(me.score), kills: me.kills, orbs: me.orbs, rank,
                     alive: Math.floor((this.tick - me.bornTick) / CONFIG.TICK_RATE), x: me.x, y: me.y, r: me.radius,
@@ -796,6 +850,13 @@
                     fz: (me.frozenUntil || 0) > this.tick ? Math.ceil((me.frozenUntil - this.tick) / CONFIG.TICK_RATE) : 0
                 } : null
             };
+            if (!sync) snap.f = foods;
+            else {
+                snap.sp = CONFIG.NET_SEG_STEP;
+                if (sync.reset) { snap.fk = 1; sync.reset = false; }
+                if (foods.length) snap.fa = foods;
+                if (removed.length) snap.fr = removed;
+            }
             if (eruptions.length) snap.er = eruptions;
             if (this.worldEvent) snap.we = [this.worldEvent.kind, Math.ceil((this.worldEvent.end - this.tick) / CONFIG.TICK_RATE)];
             if (booms.length) snap.eb = booms;

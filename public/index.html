@@ -20,12 +20,12 @@
             <div class="card-tools">
                 <button class="icon-btn" id="hallBtn" title="Tableau des records">🏆</button>
                 <button class="icon-btn sound-toggle" title="Couper / remettre le son (M)">🔊</button>
-                <button class="icon-btn" id="adminBtn" title="Son &amp; console admin">⚙️</button>
+                <button class="icon-btn" id="adminBtn" title="Réglages du son">⚙️</button>
             </div>
             <h1>Mich Snake</h1>
             <p class="subtitle">Mangez, grandissez et dominez l'arène !</p>
 
-            <div class="status-pill"><span class="dot wait" id="netDot"></span><span id="netStatus">Connexion au serveur…</span></div>
+            <div class="status-pill"><span class="dot wait" id="netDot"></span><span id="netStatus">Connexion au serveur…</span><span id="onlineCount" class="online-count hidden"></span></div>
 
             <div class="account-bar">
                 <span class="acc-avatar" id="accAvatar">👤</span>
@@ -47,6 +47,29 @@
 
             <button class="btn btn-play" id="playBtn">Jouer en ligne</button>
             <button class="btn btn-secondary" id="offlineBtn">🤖 Jouer hors-ligne contre les bots</button>
+
+            <div class="tower-box room-box hidden" id="roomBox">
+                <div class="tower-title">
+                    <span>👥 Jouer entre amis</span>
+                    <span id="roomBadge"></span>
+                </div>
+                <div id="roomIdle">
+                    <p class="tower-goal">Crée une room privée sur le niveau choisi et envoie le code à tes amis.</p>
+                    <div class="room-row">
+                        <button class="btn btn-small" id="roomCreate">➕ Créer une room</button>
+                        <input type="text" id="roomCodeInput" placeholder="CODE" maxlength="5" autocomplete="off" autocapitalize="characters" spellcheck="false">
+                        <button class="btn btn-small btn-ghost" id="roomJoin">Rejoindre</button>
+                    </div>
+                </div>
+                <div id="roomActive" class="hidden">
+                    <p class="tower-goal">Room <b class="room-code" id="roomCode"></b> · <span id="roomLevel"></span></p>
+                    <div class="room-row">
+                        <button class="btn btn-small" id="roomShare">🔗 Inviter mes amis</button>
+                        <button class="btn btn-small btn-ghost" id="roomLeave">✕ Quitter la room</button>
+                    </div>
+                </div>
+                <p class="admin-msg" id="roomMsg"></p>
+            </div>
 
             <div class="tower-box">
                 <div class="tower-title">
@@ -74,7 +97,7 @@
             </div>
 
             <p class="help" id="helpText">🖱️ Souris pour diriger · Clic ou Espace pour booster</p>
-            <div class="footer">Mich Snake v2.0 · by michben</div>
+            <div class="footer">Mich Snake v2.1 · by michben</div>
         </div>
     </div>
 
@@ -103,7 +126,7 @@
     <div id="adminScreen" class="screen hidden">
         <div class="card admin-card">
             <div class="admin-head">
-                <h2>⚙️ Son &amp; console admin</h2>
+                <h2 id="adminTitle">🔊 Réglages du son</h2>
                 <button class="icon-btn" id="adminClose" title="Fermer">✕</button>
             </div>
 
@@ -114,7 +137,8 @@
                 <label class="check-row"><input type="checkbox" id="muteBox"> Couper tout le son</label>
             </div>
 
-            <div class="admin-section">
+            <!-- Réservé à l'admin : caché pour les joueurs -->
+            <div class="admin-section hidden" id="adminMusicSection">
                 <div class="section-label"><span>🎵 Musiques du jeu</span><span id="adminTarget"></span></div>
                 <div id="adminLogin" class="admin-login hidden">
                     <p>🔒 La gestion des musiques est réservée à l'administrateur du jeu. Connectez-vous avec le compte admin pour changer les musiques de <b>tous les joueurs</b>.</p>
@@ -156,7 +180,7 @@
                 </div>
             </div>
 
-            <div class="admin-section">
+            <div class="admin-section hidden" id="adminSfxSection">
                 <div class="section-label"><span>💥 Bruitages (tester)</span></div>
                 <div class="sfx-grid" id="sfxGrid"></div>
             </div>
@@ -249,6 +273,16 @@
         </div>
         <div id="netInfo"></div>
         <div id="eventBanner" class="hidden"></div>
+        <!-- Messages éphémères : ils s'effacent tout seuls au bout de quelques secondes -->
+        <div id="chatFeed"></div>
+        <div id="chatPanel" class="hidden">
+            <div class="chat-quick" id="chatQuick"></div>
+            <form id="chatForm" autocomplete="off">
+                <input type="text" id="chatInput" maxlength="80" placeholder="Message éphémère…" enterkeyhint="send">
+                <button class="btn btn-small" type="submit">➤</button>
+            </form>
+        </div>
+        <button class="icon-btn hud-btn hidden" id="chatBtn" title="Message éphémère (Entrée)">💬</button>
         <button class="icon-btn sound-toggle hud-btn" id="hudSound" title="Couper / remettre le son (M)">🔊</button>
         <div id="minimapWrap" class="panel collapsible" data-pill="🗺️">
             <button class="hud-btn collapse-btn" title="Réduire / agrandir"></button>
