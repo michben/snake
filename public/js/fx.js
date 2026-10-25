@@ -191,7 +191,7 @@
     const parts = [];
     const texts = [];
     const embers = [];
-    const MAX_PARTS = 700;
+    const MAX_PARTS = 450;
 
     const dotCache = new Map();
     function dot(color) {
@@ -262,7 +262,7 @@
             this.shake(10);
         },
         eruption(x, y) {
-            emit(x, y, 90, { colors: ['#ff3c00', '#ff9900', '#ffd27a', '#5a1a00'], speed: 14, life: 1300, size: 13, drag: 0.95, gravity: 0.12 });
+            emit(x, y, 55, { colors: ['#ff3c00', '#ff9900', '#ffd27a', '#5a1a00'], speed: 14, life: 1100, size: 13, drag: 0.95, gravity: 0.12 });
         },
         trail(x, y, color) { emit(x, y, 1, { color, speed: 0.8, life: 420, size: 7, drag: 0.9 }); },
 

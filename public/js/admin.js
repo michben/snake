@@ -52,6 +52,10 @@
 
         const srv = online();
         const admin = Account.isAdmin();
+        // Les joueurs ne voient que les volumes : musiques et bruitages de test sont réservés à l'admin
+        $('adminTitle').textContent = admin ? '⚙️ Son & console admin' : '🔊 Réglages du son';
+        $('adminMusicSection').classList.toggle('hidden', !admin);
+        $('adminSfxSection').classList.toggle('hidden', !admin);
         $('adminTarget').textContent = admin ? (srv ? '🌐 Serveur · 👑 admin' : '📱 Cet appareil · 👑 admin') : '🔒 Admin';
         $('adminLogin').classList.toggle('hidden', admin);
         $('adminLoginBtn').classList.toggle('hidden', !srv);
